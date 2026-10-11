@@ -6,6 +6,7 @@ export interface PosterFormat {
   width: number;
   height: number;
   aspectRatioLabel: string;
+  aspectRatio?: string;
   category: FormatCategory;
   isDefault?: boolean;
 }
@@ -17,7 +18,7 @@ export interface CampaignContent {
   supportingParagraph: string;
   dateText: string;
   locationText: string;
-  ctaText?: string;
+  ctaText: string;
 }
 
 export interface AssetRecord {
@@ -34,11 +35,13 @@ export interface FormatAdjustment {
   offsetX?: number; // Normalized -1 to 1 offset
   offsetY?: number;
   scale?: number;   // 1.0 default
-  elementOverrides?: Record<string, { x?: number; y?: number }>;
+  elementOverrides?: Record<string, { x?: number; y?: number; scale?: number; fontFamily?: string; fontWeight?: string; fontSize?: number; color?: string; textAlign?: 'left' | 'center' | 'right' }>;
 }
 
 export interface CampaignAssets {
   logoUrl?: string;
+  logoWidth?: number;
+  logoHeight?: number;
   logoAspectRatio?: number;
   backgroundImages: AssetRecord[];
   selectedBackgroundId?: string;
@@ -101,11 +104,12 @@ export interface PosterTemplate {
   presets: Record<LayoutFamily, LayoutPresetConfig>;
 }
 
-export type ResolvedElementType = 'background' | 'overlay' | 'logo' | 'intro' | 'heading' | 'paragraph' | 'footer' | 'badge';
+export type ResolvedElementType = 'background' | 'overlay' | 'logo' | 'intro' | 'heading' | 'paragraph' | 'footer' | 'badge' | 'cta-button' | 'text' | 'shape';
 
 export interface ResolvedElement {
   id: string;
   type: ResolvedElementType;
+  shapeType?: 'rect' | 'circle' | 'triangle';
   x: number;
   y: number;
   width: number;
@@ -121,9 +125,15 @@ export interface ResolvedElement {
   imageFit?: 'cover' | 'contain';
   opacity?: number;
   fill?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderRadius?: number;
+  ctaType?: 'primary' | 'secondary' | 'tertiary';
+  letterSpacing?: number;
   gradient?: {
     type: 'linear' | 'radial';
     stops: Array<{ offset: number; color: string }>;
+    angle?: number;
   };
   isDraggable?: boolean;
 }

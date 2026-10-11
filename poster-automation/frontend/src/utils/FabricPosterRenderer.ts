@@ -1,4 +1,4 @@
-import { Canvas, FabricImage, Textbox, Rect, Gradient } from 'fabric';
+import { Canvas, FabricImage, Textbox, Rect, Gradient, Circle } from 'fabric';
 import { ResolvedPosterLayout, ResolvedElement } from '../types/poster';
 
 export interface RenderOptions {
@@ -101,14 +101,17 @@ export class FabricPosterRenderer {
 
           const naturalW = logoImg.width || 1;
           const naturalH = logoImg.height || 1;
-          const scaleX = el.width / naturalW;
-          const scaleY = el.height / naturalH;
+          // Scale uniformly to prevent squishing or distortion
+          const scale = Math.min(el.width / naturalW, el.height / naturalH);
+          const actualW = naturalW * scale;
+          const actualH = naturalH * scale;
 
           logoImg.set({
-            left: el.x,
-            top: el.y,
-            scaleX,
-            scaleY,
+            left: el.x + (el.width - actualW) / 2,
+            top: el.y + (el.height - actualH) / 2,
+            scaleX: scale,
+            scaleY: scale,
+            opacity: el.opacity !== undefined ? el.opacity : 1,
             selectable: isInteractive,
             hasControls: false,
             hasBorders: isInteractive,
@@ -121,17 +124,30 @@ export class FabricPosterRenderer {
         } catch (err) {
           console.warn('Could not load logo image:', err);
         }
-      } else if (['intro', 'heading', 'paragraph', 'footer'].includes(el.type) && el.text) {
+      } else if (['intro', 'heading', 'paragraph', 'footer', 'text'].includes(el.type) && el.text) {
+        const weightMap: Record<string, string> = {
+          regular: '400',
+          medium: '500',
+          semibold: '600',
+          bold: '700',
+          extrabold: '800',
+        };
+        const rawWeight = (el.fontWeight || '400').toString().toLowerCase();
+        const resolvedWeight = weightMap[rawWeight] || el.fontWeight || '400';
+        const charSpacing = (el as any).letterSpacing !== undefined ? Math.round((el as any).letterSpacing * 100) : 0;
+
         const textbox = new Textbox(el.text, {
           left: el.x,
           top: el.y,
           width: el.width,
           fontSize: el.fontSize,
           fontFamily: el.fontFamily || 'Plus Jakarta Sans',
-          fontWeight: el.fontWeight || '400',
+          fontWeight: resolvedWeight,
           fill: el.color || '#FFFFFF',
           textAlign: el.textAlign || 'left',
           lineHeight: el.lineHeight || 1.2,
+          charSpacing,
+          opacity: el.opacity !== undefined ? el.opacity : 1,
           selectable: isInteractive,
           hasControls: false,
           hasBorders: isInteractive,
@@ -145,6 +161,137 @@ export class FabricPosterRenderer {
         });
 
         canvas.add(textbox);
+      } else if (el.type === 'cta-button' && el.text) {
+        // Resolve fill (gradient or solid)
+        let fillValue: any = el.fill || '#E5173F';
+        if (el.gradient && el.gradient.stops && el.gradient.stops.length > 0) {
+          const isRadial = el.gradient.type === 'radial';
+          fillValue = new Gradient({
+            type: isRadial ? 'radial' : 'linear',
+            coords: isRadial
+              ? {
+                  r1: 0,
+                  r2: Math.max(el.width, el.height) / 2,
+                  x1: el.width / 2,
+                  y1: el.height / 2,
+                  x2: el.width / 2,
+                  y2: el.height / 2,
+                }
+              : {
+                  x1: 0,
+                  y1: 0,
+                  x2: el.width,
+                  y2: 0,
+                },
+            colorStops: el.gradient.stops.map((s) => ({ offset: s.offset, color: s.color })),
+          });
+        }
+
+        const borderRadius = el.borderRadius !== undefined ? el.borderRadius : Math.round(el.height * 0.35);
+
+        const btnRect = new Rect({
+          left: el.x,
+          top: el.y,
+          width: el.width,
+          height: el.height,
+          fill: fillValue,
+          stroke: el.borderColor || undefined,
+          strokeWidth: el.borderWidth || 0,
+          rx: borderRadius,
+          ry: borderRadius,
+          opacity: el.opacity !== undefined ? el.opacity : 1,
+          selectable: false,
+          evented: false,
+          data: { id: el.id + '-bg', type: el.type },
+        });
+        canvas.add(btnRect);
+
+        const btnTextbox = new Textbox(el.text, {
+          left: el.x,
+          top: el.y,
+          width: el.width,
+          height: el.height,
+          fontSize: el.fontSize || 16,
+          fontFamily: el.fontFamily || 'Plus Jakarta Sans',
+          fontWeight: el.fontWeight || '700',
+          fill: el.color || '#FFFFFF',
+          textAlign: el.textAlign || 'center',
+          lineHeight: 1.0,
+          opacity: el.opacity !== undefined ? el.opacity : 1,
+          selectable: isInteractive,
+          hasControls: false,
+          hasBorders: isInteractive,
+          borderColor: '#38BDF8',
+          hoverCursor: isInteractive ? 'move' : 'default',
+          data: { id: el.id, type: el.type },
+          padding: Math.round(((el.height || 48) - (el.fontSize || 16)) / 2),
+        });
+        canvas.add(btnTextbox);
+      } else if (el.type === 'shape') {
+        let shapeFill: any = el.fill || el.color || '#3B82F6';
+        if (el.gradient && el.gradient.stops && el.gradient.stops.length > 0) {
+          const isRadial = el.gradient.type === 'radial';
+          shapeFill = new Gradient({
+            type: isRadial ? 'radial' : 'linear',
+            coords: isRadial
+              ? {
+                  r1: 0,
+                  r2: Math.max(el.width, el.height) / 2,
+                  x1: el.width / 2,
+                  y1: el.height / 2,
+                  x2: el.width / 2,
+                  y2: el.height / 2,
+                }
+              : {
+                  x1: 0,
+                  y1: 0,
+                  x2: el.width,
+                  y2: 0,
+                },
+            colorStops: el.gradient.stops.map((s) => ({ offset: s.offset, color: s.color })),
+          });
+        }
+
+        if (el.shapeType === 'circle') {
+          const radius = Math.round(Math.min(el.width, el.height) / 2);
+          const circle = new Circle({
+            left: el.x,
+            top: el.y,
+            radius,
+            fill: shapeFill,
+            stroke: el.borderColor || undefined,
+            strokeWidth: el.borderWidth || 0,
+            opacity: el.opacity !== undefined ? el.opacity : 1,
+            selectable: isInteractive,
+            hasControls: false,
+            hasBorders: isInteractive,
+            borderColor: '#38BDF8',
+            hoverCursor: isInteractive ? 'move' : 'default',
+            data: { id: el.id, type: el.type },
+          });
+          canvas.add(circle);
+        } else {
+          const rx = el.borderRadius !== undefined ? el.borderRadius : 8;
+          const rect = new Rect({
+            left: el.x,
+            top: el.y,
+            width: el.width,
+            height: el.height,
+            fill: shapeFill,
+            stroke: el.borderColor || undefined,
+            strokeWidth: el.borderWidth || 0,
+            opacity: el.opacity !== undefined ? el.opacity : 1,
+            rx,
+            ry: rx,
+            selectable: isInteractive,
+            hasControls: false,
+            hasBorders: isInteractive,
+            borderColor: '#38BDF8',
+            hoverCursor: isInteractive ? 'move' : 'default',
+            data: { id: el.id, type: el.type },
+          });
+          canvas.add(rect);
+        }
       }
     }
 

@@ -200,63 +200,125 @@ export class LayoutEngine {
       });
     }
 
-    // 2. Add Readability Scrim / Contrast Overlay
-    if (preset.overlayTreatment !== 'none') {
-      const overlayColor = template.colorScheme.overlayColor || '#000000';
-      const opacity = preset.overlayOpacity || template.colorScheme.overlayOpacity || 0.65;
+    // 2. Readability Scrim / Contrast Overlay - Omitted per user request to preserve clean background image
+    // (no unwanted black opacity layer)
 
-      if (preset.overlayTreatment === 'bottom-scrim') {
+    // Specialized horizontal layout for Leaderboard (728x90) strip format
+    if (format.id === 'leaderboard' || (width >= 600 && height <= 100)) {
+      const accentColor = template.colorScheme.accent || '#38BDF8';
+      const textPrimaryColor = template.colorScheme.textPrimary || '#FFFFFF';
+
+      let logoW = 0;
+      if (assets.logoUrl) {
+        const logoH = 34;
+        const logoAspect = assets.logoAspectRatio || 2.5;
+        logoW = Math.min(160, Math.round(logoH * logoAspect));
         elements.push({
-          id: 'element-overlay',
-          type: 'overlay',
-          x: 0,
-          y: height * 0.2,
-          width,
-          height: height * 0.8,
-          opacity,
-          gradient: {
-            type: 'linear',
-            stops: [
-              { offset: 0, color: 'rgba(0,0,0,0)' },
-              { offset: 0.45, color: overlayColor + 'B0' },
-              { offset: 1, color: overlayColor + 'FA' },
-            ],
-          },
-          isDraggable: false,
-        });
-      } else if (preset.overlayTreatment === 'left-scrim') {
-        elements.push({
-          id: 'element-overlay',
-          type: 'overlay',
-          x: 0,
-          y: 0,
-          width: width * 0.75,
-          height,
-          opacity,
-          gradient: {
-            type: 'linear',
-            stops: [
-              { offset: 0, color: overlayColor + 'F0' },
-              { offset: 0.65, color: overlayColor + 'A0' },
-              { offset: 1, color: 'rgba(0,0,0,0)' },
-            ],
-          },
-          isDraggable: false,
-        });
-      } else {
-        // Dark vignette / full soft scrim
-        elements.push({
-          id: 'element-overlay',
-          type: 'overlay',
-          x: 0,
-          y: 0,
-          width,
-          height,
-          fill: overlayColor,
-          opacity: opacity * 0.75,
-          isDraggable: false,
+          id: 'element-logo',
+          type: 'logo',
+          x: 24,
+          y: Math.round((height - logoH) / 2),
+          width: logoW,
+          height: logoH,
+          imageUrl: assets.logoUrl,
+          isDraggable: true,
         });
       }
+
+      // CTA button on far right
+      const ctaText = content.ctaText || 'Book your study →';
+      const ctaW = Math.min(140, Math.max(100, Math.round(ctaText.length * 7 + 34)));
+      const ctaH = 32;
+      const ctaX = width - 24 - ctaW;
+      const ctaY = Math.round((height - ctaH) / 2);
+      elements.push({
+        id: 'element-cta',
+        type: 'cta-button',
+        x: ctaX,
+        y: ctaY,
+        width: ctaW,
+        height: ctaH,
+        text: ctaText,
+        fontSize: 11,
+        fontFamily: template.typography.bodyFontFamily,
+        fontWeight: '700',
+        lineHeight: 1.0,
+        color: '#FFFFFF',
+        fill: template.colorScheme.secondary || '#E5173F',
+        textAlign: 'center',
+        isDraggable: true,
+      });
+
+      // Text column between logo and button
+      const textStartX = assets.logoUrl ? 24 + logoW + 28 : 28;
+      const textAvailW = ctaX - textStartX - 20;
+
+      if (content.introText) {
+        elements.push({
+          id: 'element-intro',
+          type: 'intro',
+          x: textStartX,
+          y: 20,
+          width: textAvailW,
+          height: 14,
+          text: content.introText,
+          fontSize: 10,
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: '700',
+          lineHeight: 1.2,
+          color: accentColor,
+          textAlign: 'left',
+          isDraggable: true,
+        });
+      }
+
+      if (content.mainHeading) {
+        elements.push({
+          id: 'element-heading',
+          type: 'heading',
+          x: textStartX,
+          y: content.introText ? 38 : 30,
+          width: textAvailW,
+          height: 24,
+          text: content.mainHeading,
+          fontSize: 13,
+          fontFamily: template.typography.headingFontFamily,
+          fontWeight: '800',
+          lineHeight: 1.15,
+          color: textPrimaryColor,
+          textAlign: 'left',
+          isDraggable: true,
+        });
+      }
+
+      if (adjustment?.elementOverrides) {
+        for (const el of elements) {
+          const override = adjustment.elementOverrides[el.id];
+          if (override) {
+            if (override.x !== undefined) el.x = override.x;
+            if (override.y !== undefined) el.y = override.y;
+            if (override.scale !== undefined) {
+              el.width = el.width * override.scale;
+              el.height = el.height * override.scale;
+            }
+            if (override.fontFamily !== undefined) el.fontFamily = override.fontFamily;
+            if (override.fontWeight !== undefined) el.fontWeight = override.fontWeight;
+            if (override.fontSize !== undefined) el.fontSize = override.fontSize;
+            if (override.color !== undefined) el.color = override.color;
+            if (override.textAlign !== undefined) el.textAlign = override.textAlign;
+          }
+        }
+      }
+
+      return {
+        format,
+        canvasWidth: width,
+        canvasHeight: height,
+        layoutFamily,
+        elements,
+        warnings,
+        isValid: true,
+      };
     }
 
     // Calculate Content Safe Bounds
@@ -278,13 +340,18 @@ export class LayoutEngine {
     // 3. Resolve Company Logo
     let logoBottomY = padTop;
     if (assets.logoUrl && preset.logoPosition !== 'none') {
-      const maxLogoH = Math.round(height * preset.maxLogoHeightRatio);
-      const logoAspect = assets.logoAspectRatio || 2.8;
+      const maxLogoH = height <= 120
+        ? Math.round(height * 0.42)
+        : height <= 350
+        ? Math.round(height * 0.18)
+        : Math.max(Math.round(height * Math.max(preset.maxLogoHeightRatio || 0.08, 0.09)), 80);
+      const logoAspect = assets.logoAspectRatio || (assets.logoWidth && assets.logoHeight ? assets.logoWidth / assets.logoHeight : 2.5);
       let logoW = Math.round(maxLogoH * logoAspect);
       let logoH = maxLogoH;
 
-      if (logoW > contentWidth * 0.4) {
-        logoW = Math.round(contentWidth * 0.4);
+      const maxAllowedW = Math.min(contentWidth * 0.5, 420);
+      if (logoW > maxAllowedW) {
+        logoW = Math.round(maxAllowedW);
         logoH = Math.round(logoW / logoAspect);
       }
 
@@ -318,7 +385,7 @@ export class LayoutEngine {
     let introH = 0;
     let introFontSize = Math.round(minDimension * tc.introFontSizeRatio);
     if (content.introText && content.introText.trim().length > 0) {
-      introFontSize = Math.max(14, introFontSize);
+      introFontSize = Math.max(10, introFontSize);
       introH = Math.round(introFontSize * 1.4);
     }
 
@@ -326,12 +393,14 @@ export class LayoutEngine {
     let headingH = 0;
     let headingLines = 0;
     let headingFontSize = Math.round(minDimension * tc.headingFontSizeRatio);
+    const effectiveMinHeading = Math.min(tc.minHeadingFontSize, Math.max(12, Math.round(minDimension * 0.055)));
+    const effectiveMaxHeading = Math.min(tc.maxHeadingFontSize, Math.max(16, Math.round(minDimension * 0.09)));
     if (content.mainHeading && content.mainHeading.trim().length > 0) {
       const fit = calculateFittedFontSize(
         content.mainHeading,
         headingFontSize,
-        tc.minHeadingFontSize,
-        tc.maxHeadingFontSize,
+        effectiveMinHeading,
+        effectiveMaxHeading,
         contentWidth,
         tc.maxHeadingLines
       );
@@ -408,7 +477,7 @@ export class LayoutEngine {
         y: Math.round(currentY),
         width: contentWidth,
         height: introH,
-        text: content.introText.toUpperCase(),
+        text: content.introText,
         fontSize: introFontSize,
         fontFamily: template.typography.bodyFontFamily,
         fontWeight: '700',
@@ -462,7 +531,7 @@ export class LayoutEngine {
       currentY += paragraphH + elementGap * 1.2;
     }
 
-    // Place Footer Elements (Date and Location)
+    // D. Footer Info (Date & Location)
     if (hasFooter) {
       const footerY = Math.max(currentY, height - padBottom - footerH);
       const combinedFooterText = [content.dateText, content.locationText]
@@ -487,13 +556,54 @@ export class LayoutEngine {
       });
     }
 
-    // Apply any format-level manual user drag overrides if provided
+    // E. CTA Button
+    const ctaText = content.ctaText || '';
+    if (ctaText.trim().length > 0) {
+      const ctaBtnH = Math.max(Math.round(minDimension * 0.045), 28);
+      const ctaFontSize = Math.max(10, Math.round(minDimension * 0.022));
+      const ctaBtnW = Math.min(Math.round(ctaText.length * ctaFontSize * 0.7 + ctaBtnH * 2), contentWidth * 0.55);
+      const ctaY = hasFooter
+        ? Math.max(currentY, height - padBottom - footerH - elementGap * 1.5 - ctaBtnH)
+        : Math.max(currentY, height - padBottom - ctaBtnH);
+      const ctaX = preset.contentAlignment === 'center'
+        ? padLeft + (contentWidth - ctaBtnW) / 2
+        : padLeft;
+
+      elements.push({
+        id: 'element-cta',
+        type: 'cta-button',
+        x: ctaX,
+        y: Math.round(ctaY),
+        width: ctaBtnW,
+        height: ctaBtnH,
+        text: ctaText,
+        fontSize: ctaFontSize,
+        fontFamily: template.typography.bodyFontFamily,
+        fontWeight: '700',
+        lineHeight: 1.0,
+        color: '#FFFFFF',
+        fill: template.colorScheme.secondary || '#E5173F',
+        textAlign: 'center',
+        isDraggable: true,
+      });
+    }
+
+    // Apply any format-level manual user drag/style overrides if provided
     if (adjustment?.elementOverrides) {
       for (const el of elements) {
         const override = adjustment.elementOverrides[el.id];
         if (override) {
           if (override.x !== undefined) el.x = override.x;
           if (override.y !== undefined) el.y = override.y;
+          if (override.scale !== undefined) {
+            el.width = el.width * override.scale;
+            el.height = el.height * override.scale;
+          }
+          if (override.fontFamily !== undefined) el.fontFamily = override.fontFamily;
+          if (override.fontWeight !== undefined) el.fontWeight = override.fontWeight;
+          if (override.fontSize !== undefined) el.fontSize = override.fontSize;
+          if (override.color !== undefined) el.color = override.color;
+          if (override.textAlign !== undefined) el.textAlign = override.textAlign;
         }
       }
     }

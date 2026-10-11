@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import JSZip from 'jszip';
-import { PosterFormat } from '../../types/poster';
+import { PosterFormat, CampaignContent, CampaignAssets, PosterTemplate } from '../../types/poster';
+import { PosterInlineEditor } from './PosterInlineEditor';
 import {
   Download,
   FolderArchive,
@@ -10,6 +11,7 @@ import {
   Sparkles,
   Layers,
   ExternalLink,
+  Pencil,
 } from 'lucide-react';
 
 export interface GeneratedPosterItem {
@@ -25,6 +27,11 @@ interface PosterGalleryModalProps {
   onClose: () => void;
   campaignName: string;
   posters: GeneratedPosterItem[];
+  // Context needed by the inline editor
+  content: CampaignContent;
+  assets: CampaignAssets;
+  template: PosterTemplate;
+  onSaveChanges: (updatedContent: CampaignContent, updatedAssets: CampaignAssets) => void;
 }
 
 export const PosterGalleryModal: React.FC<PosterGalleryModalProps> = ({
@@ -32,10 +39,19 @@ export const PosterGalleryModal: React.FC<PosterGalleryModalProps> = ({
   onClose,
   campaignName,
   posters,
+  content,
+  assets,
+  template,
+  onSaveChanges,
 }) => {
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [downloadedAll, setDownloadedAll] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<GeneratedPosterItem | null>(null);
+  const [updatedPosters, setUpdatedPosters] = useState<GeneratedPosterItem[]>(posters);
+
+  // Keep local posters in sync when parent re-generates
+  React.useEffect(() => { setUpdatedPosters(posters); }, [posters]);
 
   if (!isOpen) return null;
 
@@ -159,18 +175,28 @@ export const PosterGalleryModal: React.FC<PosterGalleryModalProps> = ({
         {/* Posters Grid */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100/70">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {posters.map((item, idx) => (
+            {updatedPosters.map((item, idx) => (
               <div
                 key={idx}
-                className="bg-white rounded-xl border border-slate-200 shadow-xs hover:shadow-md transition-shadow flex flex-col overflow-hidden"
+                className="bg-white rounded-xl border border-slate-200 shadow-xs hover:shadow-md transition-shadow flex flex-col overflow-hidden group"
               >
                 {/* Image Preview Box */}
-                <div className="p-3 bg-slate-900/90 flex items-center justify-center min-h-[260px] relative group overflow-hidden">
+                <div className="p-3 bg-slate-900/90 flex items-center justify-center min-h-[260px] relative overflow-hidden">
                   <img
                     src={item.dataUrl}
                     alt={item.format.name}
                     className="max-h-[320px] max-w-full object-contain rounded shadow-md"
                   />
+                  {/* Hover overlay with Edit shortcut */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button
+                      onClick={() => setEditingItem(item)}
+                      className="px-4 py-2 bg-[#6366f1] hover:bg-[#5254cc] text-white text-xs font-bold rounded-xl flex items-center space-x-2 shadow-lg transition-all transform scale-90 group-hover:scale-100"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>Open in Editor</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Card Details & Download Action */}
@@ -182,14 +208,25 @@ export const PosterGalleryModal: React.FC<PosterGalleryModalProps> = ({
                     </span>
                   </div>
 
-                  <button
-                    onClick={() => handleDownloadSingle(item)}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-colors flex items-center space-x-1.5 shadow-xs"
-                    title={`Download ${item.format.name} PNG`}
-                  >
-                    <Download className="w-3.5 h-3.5 text-slate-600" />
-                    <span>Download</span>
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    {/* Edit in Figma-style editor */}
+                    <button
+                      onClick={() => setEditingItem(item)}
+                      className="p-1.5 bg-[#6366f1]/10 hover:bg-[#6366f1]/20 text-[#6366f1] rounded-lg transition-colors flex items-center"
+                      title={`Edit ${item.format.name} in editor`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    {/* Download */}
+                    <button
+                      onClick={() => handleDownloadSingle(item)}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-colors flex items-center space-x-1.5 shadow-xs"
+                      title={`Download ${item.format.name} PNG`}
+                    >
+                      <Download className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Download</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -207,6 +244,31 @@ export const PosterGalleryModal: React.FC<PosterGalleryModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* ── Figma-style Inline Editor ── */}
+      {editingItem && (
+        <PosterInlineEditor
+          isOpen={!!editingItem}
+          onClose={() => setEditingItem(null)}
+          format={editingItem.format}
+          content={content}
+          assets={assets}
+          template={template}
+          onSaveChanges={(updatedContent, updatedAssets) => {
+            onSaveChanges(updatedContent, updatedAssets);
+          }}
+          onReExport={(dataUrl, filename) => {
+            // Update the poster card with the newly exported image
+            setUpdatedPosters((prev) =>
+              prev.map((p) =>
+                p.format.id === editingItem.format.id
+                  ? { ...p, dataUrl, filename }
+                  : p
+              )
+            );
+          }}
+        />
+      )}
     </div>
   );
 };

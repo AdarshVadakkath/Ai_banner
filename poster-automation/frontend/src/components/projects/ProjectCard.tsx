@@ -66,10 +66,23 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
           </h4>
         </div>
 
-        {/* Formats count badge */}
+        {/* Formats count badge & Quick delete */}
         <div className="absolute bottom-2.5 right-2.5 bg-slate-950/80 backdrop-blur-xs text-white text-[11px] font-medium px-2 py-0.5 rounded-md border border-white/10">
           {project.selectedFormats?.length || 0} formats
         </div>
+
+        {/* Quick Delete button on thumbnail */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(project.id);
+          }}
+          className="absolute top-2.5 left-2.5 bg-slate-950/80 hover:bg-rose-600 text-white p-1.5 rounded-lg border border-white/10 opacity-0 group-hover:opacity-100 transition-all cursor-pointer z-10 shadow-sm"
+          title="Delete campaign"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       {/* Card Info & Menu */}
@@ -88,7 +101,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
               <button
                 type="button"
                 onClick={() => setShowMenu(!showMenu)}
-                className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
+                className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
               >
                 <MoreVertical className="w-4 h-4" />
               </button>
@@ -107,7 +120,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                         setShowMenu(false);
                         onOpen(project.id);
                       }}
-                      className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
+                      className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer"
                     >
                       <FolderOpen className="w-3.5 h-3.5 text-slate-400" />
                       <span>Open editor</span>
@@ -118,7 +131,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                         setShowMenu(false);
                         onRename(project.id, project.name);
                       }}
-                      className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
+                      className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5 text-slate-400" />
                       <span>Rename</span>
@@ -129,7 +142,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                         setShowMenu(false);
                         onDuplicate(project.id);
                       }}
-                      className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center space-x-2"
+                      className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer"
                     >
                       <Copy className="w-3.5 h-3.5 text-slate-400" />
                       <span>Duplicate</span>
@@ -141,7 +154,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                         setShowMenu(false);
                         onDelete(project.id);
                       }}
-                      className="w-full px-3 py-2 text-left text-rose-600 hover:bg-rose-50 flex items-center space-x-2"
+                      className="w-full px-3 py-2 text-left text-rose-600 hover:bg-rose-50 flex items-center space-x-2 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                       <span>Delete</span>
@@ -164,15 +177,26 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
           </div>
         </div>
 
-        {/* Quick Open Action Button */}
-        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+        {/* Quick Open Action Button & Quick Delete Button */}
+        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => onOpen(project.id)}
-            className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center space-x-1.5"
+            className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
           >
             <FolderOpen className="w-3.5 h-3.5 text-slate-600" />
             <span>Open campaign</span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(project.id);
+            }}
+            className="px-2.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors flex items-center justify-center cursor-pointer border border-rose-100"
+            title="Delete campaign"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
           </button>
         </div>
       </div>

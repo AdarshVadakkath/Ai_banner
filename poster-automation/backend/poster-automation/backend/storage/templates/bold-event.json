@@ -1,0 +1,138 @@
+{
+  "id": "bold-event",
+  "name": "Bold Summit",
+  "description": "High-impact editorial layout with high contrast, centered headers, and punchy dates for conferences & summits.",
+  "category": "Bold Event",
+  "colorScheme": {
+    "primary": "#0B0F19",
+    "secondary": "#F59E0B",
+    "accent": "#F97316",
+    "textPrimary": "#FFFFFF",
+    "textSecondary": "#F1F5F9",
+    "overlayColor": "#000000",
+    "overlayOpacity": 0.7
+  },
+  "typography": {
+    "headingFontFamily": "Space Grotesk",
+    "bodyFontFamily": "Plus Jakarta Sans",
+    "headingWeight": "700",
+    "bodyWeight": "600"
+  },
+  "characterLimits": {
+    "introText": 35,
+    "mainHeading": 50,
+    "supportingParagraph": 95,
+    "dateText": 30,
+    "locationText": 40
+  },
+  "presets": {
+    "square": {
+      "family": "square",
+      "name": "Square Impact Center",
+      "padding": {
+        "top": 0.09,
+        "right": 0.09,
+        "bottom": 0.09,
+        "left": 0.09
+      },
+      "contentAlignment": "center",
+      "contentVerticalPosition": "center",
+      "logoPosition": "top-center",
+      "maxLogoHeightRatio": 0.075,
+      "textConstraints": {
+        "introFontSizeRatio": 0.024,
+        "headingFontSizeRatio": 0.068,
+        "paragraphFontSizeRatio": 0.028,
+        "footerFontSizeRatio": 0.024,
+        "minHeadingFontSize": 30,
+        "maxHeadingFontSize": 72,
+        "maxHeadingLines": 3,
+        "maxParagraphLines": 3,
+        "elementSpacingRatio": 0.03
+      },
+      "overlayTreatment": "dark-vignette",
+      "overlayOpacity": 0.78
+    },
+    "portrait": {
+      "family": "portrait",
+      "name": "Story Drama Stack",
+      "padding": {
+        "top": 0.1,
+        "right": 0.08,
+        "bottom": 0.1,
+        "left": 0.08
+      },
+      "contentAlignment": "center",
+      "contentVerticalPosition": "center",
+      "logoPosition": "top-center",
+      "maxLogoHeightRatio": 0.065,
+      "textConstraints": {
+        "introFontSizeRatio": 0.024,
+        "headingFontSizeRatio": 0.062,
+        "paragraphFontSizeRatio": 0.026,
+        "footerFontSizeRatio": 0.023,
+        "minHeadingFontSize": 28,
+        "maxHeadingFontSize": 68,
+        "maxHeadingLines": 4,
+        "maxParagraphLines": 4,
+        "elementSpacingRatio": 0.032
+      },
+      "overlayTreatment": "dark-vignette",
+      "overlayOpacity": 0.76
+    },
+    "landscape": {
+      "family": "landscape",
+      "name": "Landscape Banner Hero",
+      "padding": {
+        "top": 0.08,
+        "right": 0.08,
+        "bottom": 0.08,
+        "left": 0.08
+      },
+      "contentAlignment": "left",
+      "contentVerticalPosition": "center",
+      "logoPosition": "top-left",
+      "maxLogoHeightRatio": 0.09,
+      "textConstraints": {
+        "introFontSizeRatio": 0.026,
+        "headingFontSizeRatio": 0.068,
+        "paragraphFontSizeRatio": 0.028,
+        "footerFontSizeRatio": 0.024,
+        "minHeadingFontSize": 26,
+        "maxHeadingFontSize": 62,
+        "maxHeadingLines": 3,
+        "maxParagraphLines": 3,
+        "elementSpacingRatio": 0.026
+      },
+      "overlayTreatment": "left-scrim",
+      "overlayOpacity": 0.82
+    },
+    "widescreen": {
+      "family": "widescreen",
+      "name": "Widescreen Keynote",
+      "padding": {
+        "top": 0.1,
+        "right": 0.08,
+        "bottom": 0.1,
+        "left": 0.08
+      },
+      "contentAlignment": "left",
+      "contentVerticalPosition": "center",
+      "logoPosition": "top-left",
+      "maxLogoHeightRatio": 0.1,
+      "textConstraints": {
+        "introFontSizeRatio": 0.026,
+        "headingFontSizeRatio": 0.07,
+        "paragraphFontSizeRatio": 0.028,
+        "footerFontSizeRatio": 0.024,
+        "minHeadingFontSize": 28,
+        "maxHeadingFontSize": 68,
+        "maxHeadingLines": 3,
+        "maxParagraphLines": 3,
+        "elementSpacingRatio": 0.028
+      },
+      "overlayTreatment": "left-scrim",
+      "overlayOpacity": 0.85
+    }
+  }
+}

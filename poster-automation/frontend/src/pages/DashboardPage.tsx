@@ -77,12 +77,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleDelete = (id: string) => {
+    const proj = projects.find((p) => p.id === id);
+    setDeleteTarget({ id, name: proj?.name || 'this campaign' });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    const deletedName = deleteTarget.name;
     try {
-      await ApiService.deleteProject(id);
-      setProjects((prev) => prev.filter((p) => p.id !== id));
+      await ApiService.deleteProject(deleteTarget.id);
+      setProjects((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      showToast(`"${deletedName}" deleted successfully`);
     } catch (err) {
       console.error('Delete failed:', err);
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -247,6 +265,47 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           onClose={() => setRenameTarget(null)}
           onSave={handleSaveRename}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+              <span className="text-xl">⚠️</span>
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Delete Campaign?</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Are you sure you want to delete <span className="font-semibold text-slate-800">"{deleteTarget.name}"</span>? This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors shadow-xs cursor-pointer"
+              >
+                Delete campaign
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-xl flex items-center space-x-2 animate-fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{toastMessage}</span>
+        </div>
       )}
     </div>
   );
