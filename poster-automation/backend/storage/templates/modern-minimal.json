@@ -1,0 +1,138 @@
+{
+  "id": "modern-minimal",
+  "name": "Modern Minimal",
+  "description": "Clean, structured hierarchy tailored for corporate announcements, tech products, and brand launches.",
+  "category": "Modern Corporate",
+  "colorScheme": {
+    "primary": "#0F172A",
+    "secondary": "#3B82F6",
+    "accent": "#38BDF8",
+    "textPrimary": "#FFFFFF",
+    "textSecondary": "#E2E8F0",
+    "overlayColor": "#090D16",
+    "overlayOpacity": 0.65
+  },
+  "typography": {
+    "headingFontFamily": "Plus Jakarta Sans",
+    "bodyFontFamily": "Plus Jakarta Sans",
+    "headingWeight": "800",
+    "bodyWeight": "500"
+  },
+  "characterLimits": {
+    "introText": 40,
+    "mainHeading": 55,
+    "supportingParagraph": 110,
+    "dateText": 35,
+    "locationText": 45
+  },
+  "presets": {
+    "square": {
+      "family": "square",
+      "name": "Square Balanced",
+      "padding": {
+        "top": 0.08,
+        "right": 0.08,
+        "bottom": 0.08,
+        "left": 0.08
+      },
+      "contentAlignment": "left",
+      "contentVerticalPosition": "bottom",
+      "logoPosition": "top-left",
+      "maxLogoHeightRatio": 0.07,
+      "textConstraints": {
+        "introFontSizeRatio": 0.024,
+        "headingFontSizeRatio": 0.062,
+        "paragraphFontSizeRatio": 0.028,
+        "footerFontSizeRatio": 0.022,
+        "minHeadingFontSize": 28,
+        "maxHeadingFontSize": 68,
+        "maxHeadingLines": 3,
+        "maxParagraphLines": 4,
+        "elementSpacingRatio": 0.025
+      },
+      "overlayTreatment": "bottom-scrim",
+      "overlayOpacity": 0.75
+    },
+    "portrait": {
+      "family": "portrait",
+      "name": "Portrait Vertical Stack",
+      "padding": {
+        "top": 0.08,
+        "right": 0.08,
+        "bottom": 0.08,
+        "left": 0.08
+      },
+      "contentAlignment": "left",
+      "contentVerticalPosition": "bottom",
+      "logoPosition": "top-left",
+      "maxLogoHeightRatio": 0.06,
+      "textConstraints": {
+        "introFontSizeRatio": 0.024,
+        "headingFontSizeRatio": 0.058,
+        "paragraphFontSizeRatio": 0.026,
+        "footerFontSizeRatio": 0.022,
+        "minHeadingFontSize": 26,
+        "maxHeadingFontSize": 65,
+        "maxHeadingLines": 4,
+        "maxParagraphLines": 4,
+        "elementSpacingRatio": 0.028
+      },
+      "overlayTreatment": "bottom-scrim",
+      "overlayOpacity": 0.72
+    },
+    "landscape": {
+      "family": "landscape",
+      "name": "Landscape Split Focus",
+      "padding": {
+        "top": 0.09,
+        "right": 0.08,
+        "bottom": 0.09,
+        "left": 0.08
+      },
+      "contentAlignment": "left",
+      "contentVerticalPosition": "center",
+      "logoPosition": "top-left",
+      "maxLogoHeightRatio": 0.09,
+      "textConstraints": {
+        "introFontSizeRatio": 0.026,
+        "headingFontSizeRatio": 0.064,
+        "paragraphFontSizeRatio": 0.028,
+        "footerFontSizeRatio": 0.022,
+        "minHeadingFontSize": 24,
+        "maxHeadingFontSize": 58,
+        "maxHeadingLines": 3,
+        "maxParagraphLines": 3,
+        "elementSpacingRatio": 0.024
+      },
+      "overlayTreatment": "left-scrim",
+      "overlayOpacity": 0.8
+    },
+    "widescreen": {
+      "family": "widescreen",
+      "name": "Wide Display Cinema",
+      "padding": {
+        "top": 0.1,
+        "right": 0.08,
+        "bottom": 0.1,
+        "left": 0.08
+      },
+      "contentAlignment": "left",
+      "contentVerticalPosition": "center",
+      "logoPosition": "top-left",
+      "maxLogoHeightRatio": 0.1,
+      "textConstraints": {
+        "introFontSizeRatio": 0.026,
+        "headingFontSizeRatio": 0.066,
+        "paragraphFontSizeRatio": 0.028,
+        "footerFontSizeRatio": 0.022,
+        "minHeadingFontSize": 26,
+        "maxHeadingFontSize": 64,
+        "maxHeadingLines": 3,
+        "maxParagraphLines": 3,
+        "elementSpacingRatio": 0.026
+      },
+      "overlayTreatment": "left-scrim",
+      "overlayOpacity": 0.82
+    }
+  }
+}

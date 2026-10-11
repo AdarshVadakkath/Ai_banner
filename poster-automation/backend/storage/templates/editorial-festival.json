@@ -1,0 +1,138 @@
+{
+  "id": "editorial-festival",
+  "name": "Festival & Culture",
+  "description": "Refined artistic presentation designed for exhibitions, concerts, cultural events, and festivals.",
+  "category": "Editorial Festival",
+  "colorScheme": {
+    "primary": "#18181B",
+    "secondary": "#EC4899",
+    "accent": "#A855F7",
+    "textPrimary": "#FFFFFF",
+    "textSecondary": "#F4F4F5",
+    "overlayColor": "#120E16",
+    "overlayOpacity": 0.68
+  },
+  "typography": {
+    "headingFontFamily": "Space Grotesk",
+    "bodyFontFamily": "Plus Jakarta Sans",
+    "headingWeight": "700",
+    "bodyWeight": "500"
+  },
+  "characterLimits": {
+    "introText": 45,
+    "mainHeading": 60,
+    "supportingParagraph": 120,
+    "dateText": 35,
+    "locationText": 50
+  },
+  "presets": {
+    "square": {
+      "family": "square",
+      "name": "Artistic Square",
+      "padding": {
+        "top": 0.08,
+        "right": 0.08,
+        "bottom": 0.08,
+        "left": 0.08
+      },
+      "contentAlignment": "left",
+      "contentVerticalPosition": "bottom",
+      "logoPosition": "top-left",
+      "maxLogoHeightRatio": 0.07,
+      "textConstraints": {
+        "introFontSizeRatio": 0.024,
+        "headingFontSizeRatio": 0.06,
+        "paragraphFontSizeRatio": 0.028,
+        "footerFontSizeRatio": 0.022,
+        "minHeadingFontSize": 28,
+        "maxHeadingFontSize": 64,
+        "maxHeadingLines": 3,
+        "maxParagraphLines": 4,
+        "elementSpacingRatio": 0.026
+      },
+      "overlayTreatment": "bottom-scrim",
+      "overlayOpacity": 0.74
+    },
+    "portrait": {
+      "family": "portrait",
+      "name": "Story Festival Poster",
+      "padding": {
+        "top": 0.09,
+        "right": 0.08,
+        "bottom": 0.09,
+        "left": 0.08
+      },
+      "contentAlignment": "left",
+      "contentVerticalPosition": "bottom",
+      "logoPosition": "top-left",
+      "maxLogoHeightRatio": 0.065,
+      "textConstraints": {
+        "introFontSizeRatio": 0.024,
+        "headingFontSizeRatio": 0.056,
+        "paragraphFontSizeRatio": 0.026,
+        "footerFontSizeRatio": 0.022,
+        "minHeadingFontSize": 26,
+        "maxHeadingFontSize": 62,
+        "maxHeadingLines": 4,
+        "maxParagraphLines": 4,
+        "elementSpacingRatio": 0.028
+      },
+      "overlayTreatment": "bottom-scrim",
+      "overlayOpacity": 0.75
+    },
+    "landscape": {
+      "family": "landscape",
+      "name": "Banner Cultural Spread",
+      "padding": {
+        "top": 0.08,
+        "right": 0.08,
+        "bottom": 0.08,
+        "left": 0.08
+      },
+      "contentAlignment": "left",
+      "contentVerticalPosition": "center",
+      "logoPosition": "top-left",
+      "maxLogoHeightRatio": 0.09,
+      "textConstraints": {
+        "introFontSizeRatio": 0.026,
+        "headingFontSizeRatio": 0.062,
+        "paragraphFontSizeRatio": 0.028,
+        "footerFontSizeRatio": 0.022,
+        "minHeadingFontSize": 24,
+        "maxHeadingFontSize": 56,
+        "maxHeadingLines": 3,
+        "maxParagraphLines": 3,
+        "elementSpacingRatio": 0.024
+      },
+      "overlayTreatment": "left-scrim",
+      "overlayOpacity": 0.8
+    },
+    "widescreen": {
+      "family": "widescreen",
+      "name": "Wide Cultural Exhibition",
+      "padding": {
+        "top": 0.1,
+        "right": 0.08,
+        "bottom": 0.1,
+        "left": 0.08
+      },
+      "contentAlignment": "left",
+      "contentVerticalPosition": "center",
+      "logoPosition": "top-left",
+      "maxLogoHeightRatio": 0.1,
+      "textConstraints": {
+        "introFontSizeRatio": 0.026,
+        "headingFontSizeRatio": 0.064,
+        "paragraphFontSizeRatio": 0.028,
+        "footerFontSizeRatio": 0.022,
+        "minHeadingFontSize": 26,
+        "maxHeadingFontSize": 60,
+        "maxHeadingLines": 3,
+        "maxParagraphLines": 3,
+        "elementSpacingRatio": 0.026
+      },
+      "overlayTreatment": "left-scrim",
+      "overlayOpacity": 0.82
+    }
+  }
+}

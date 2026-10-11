@@ -1,0 +1,6 @@
+{
+  "name": "Formatly - Multi-Format Poster Automation",
+  "description": "Rule-based multi-format poster automation platform that converts a single campaign into social, story, presentation, and banner poster variations with deterministic layouts and instant exports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
