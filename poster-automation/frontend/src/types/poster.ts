@@ -49,7 +49,9 @@ export interface CampaignAssets {
   formatAdjustments: Record<string, FormatAdjustment>;
 }
 
-export type LayoutFamily = 'square' | 'portrait' | 'landscape' | 'widescreen';
+/** Broad composition groups. Compact display placements intentionally use their
+ * own family instead of inheriting a scaled social-post composition. */
+export type LayoutFamily = 'square' | 'portrait' | 'landscape' | 'widescreen' | 'compact' | 'skyscraper';
 
 export interface LayoutPresetConfig {
   family: LayoutFamily;
@@ -87,6 +89,12 @@ export interface PosterTemplate {
     textSecondary: string;
     overlayColor: string;
     overlayOpacity: number;
+    /** Per-campaign CTA overrides; omitted values retain the template defaults. */
+    ctaBackground?: string;
+    ctaText?: string;
+    /** Per-campaign colors for text that previously inherited the accent blue. */
+    introText?: string;
+    footerText?: string;
   };
   typography: {
     headingFontFamily: string;
@@ -101,7 +109,9 @@ export interface PosterTemplate {
     dateText: number;
     locationText: number;
   };
-  presets: Record<LayoutFamily, LayoutPresetConfig>;
+  // Compact and skyscraper formats intentionally reuse a base landscape or
+  // portrait preset while the engine applies their dedicated composition rules.
+  presets: Record<Exclude<LayoutFamily, 'compact' | 'skyscraper'>, LayoutPresetConfig>;
 }
 
 export type ResolvedElementType = 'background' | 'overlay' | 'logo' | 'intro' | 'heading' | 'paragraph' | 'footer' | 'badge' | 'cta-button' | 'text' | 'shape';
@@ -121,6 +131,7 @@ export interface ResolvedElement {
   lineHeight?: number;
   color?: string;
   textAlign?: 'left' | 'center' | 'right';
+  verticalAlign?: 'top' | 'middle' | 'bottom';
   imageUrl?: string;
   imageFit?: 'cover' | 'contain';
   opacity?: number;
@@ -150,6 +161,9 @@ export interface ResolvedPosterLayout {
   canvasWidth: number;
   canvasHeight: number;
   layoutFamily: LayoutFamily;
+  /** Deterministic composition chosen within the family. */
+  templateId?: string;
+  validationAttempts?: number;
   elements: ResolvedElement[];
   warnings: ValidationWarning[];
   isValid: boolean;

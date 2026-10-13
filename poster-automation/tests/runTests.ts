@@ -3,6 +3,10 @@ import {
   validateContentLimits,
   calculateFittedFontSize,
   estimateLineCount,
+  measureTextBlock,
+  selectLayoutTemplate,
+  validateResolvedLayout,
+  calculateCtaDimensions,
   LayoutEngine,
 } from '../frontend/src/utils/LayoutEngine';
 import { BUILTIN_TEMPLATES } from '../frontend/src/constants/templates';
@@ -39,6 +43,8 @@ assert(landscapeFamily === 'landscape', 'Calculates 1200x628 as landscape banner
 
 const widescreenFamily = selectLayoutFamily(1920, 1080); // 16:9 = 1.777
 assert(widescreenFamily === 'widescreen', 'Calculates 1920x1080 as widescreen family');
+assert(selectLayoutFamily(728, 90, 'banner') === 'compact', 'Classifies leaderboard as compact family');
+assert(selectLayoutFamily(160, 600, 'banner') === 'skyscraper', 'Classifies 160x600 as skyscraper family');
 
 // 2. Character Limits & Validation
 console.log('\n[Test Suite 2: Character Limits Validation]');
@@ -78,10 +84,23 @@ assert(!shortHeadingFit.overflows, 'Does not overflow on short text');
 const denseHeading = 'The Complete Strategic Transformation of Global Infrastructure Across Heterogeneous Distributed Computing Systems';
 const denseHeadingFit = calculateFittedFontSize(denseHeading, 60, 24, 80, 800, 2);
 assert(denseHeadingFit.fontSize <= 60, 'Shrinks font size to accommodate long heading');
+const longWordMeasurement = measureTextBlock('Supercalifragilisticexpialidocious', 24, 100);
+assert(longWordMeasurement.lineCount > 1, 'Breaks an unspaced long word without clipping');
+assert(measureTextBlock('WWW', 20, 500).width > measureTextBlock('iii', 20, 500).width, 'Measures proportional character widths');
 
-// 4. Deterministic Position Calculations & Layout Output
-console.log('\n[Test Suite 4: Deterministic Position Calculations]');
-const squareFormat = DEFAULT_POSTER_FORMATS[0]; // 1080x1080
+console.log('\n[Test Suite 4: Template Selection and Validation]');
+assert(selectLayoutTemplate('landscape', validContent, 1200, 630) === 'landscape-split', 'Selects image-balanced landscape template for concise content');
+assert(selectLayoutTemplate('landscape', { ...validContent, supportingParagraph: 'A '.repeat(100) }, 1200, 630) === 'landscape-text-focused', 'Selects text-focused landscape template for dense content');
+const invalidBounds = validateResolvedLayout({ canvasWidth: 100, canvasHeight: 100, elements: [{ id: 'x', type: 'heading', x: 80, y: 10, width: 30, height: 20, text: 'Test', fontSize: 12 }] });
+assert(invalidBounds.some((warning) => warning.severity === 'error'), 'Reports out-of-bounds elements as validation errors');
+const primaryButton = calculateCtaDimensions('Start your free trial', 420, 600, 'primary');
+const tertiaryButton = calculateCtaDimensions('Learn more', 420, 600, 'tertiary');
+assert(primaryButton.width <= 420 * 0.72 && primaryButton.width > tertiaryButton.width, 'Sizes primary CTA from its measured label within available space');
+assert(primaryButton.height > tertiaryButton.height, 'Uses a compact height for tertiary CTA links');
+
+// 5. Deterministic Position Calculations & Layout Output
+console.log('\n[Test Suite 5: Deterministic Position Calculations]');
+const squareFormat = DEFAULT_POSTER_FORMATS.find((format) => format.id === 'square-1200')!;
 const resolvedLayout = LayoutEngine.computeLayout({
   template,
   content: validContent,
@@ -97,7 +116,7 @@ const resolvedLayout = LayoutEngine.computeLayout({
 });
 
 assert(resolvedLayout.isValid, 'Layout engine marks valid content as valid');
-assert(resolvedLayout.canvasWidth === 1080 && resolvedLayout.canvasHeight === 1080, 'Correct canvas dimensions');
+assert(resolvedLayout.canvasWidth === 1200 && resolvedLayout.canvasHeight === 1200, 'Correct canvas dimensions');
 
 const bgElement = resolvedLayout.elements.find((e) => e.type === 'background');
 assert(Boolean(bgElement), 'Includes background element');
@@ -115,8 +134,8 @@ assert(Boolean(headingElement && headingElement.y > 0), 'Calculates valid positi
 const footerElement = resolvedLayout.elements.find((e) => e.type === 'footer');
 assert(Boolean(footerElement && footerElement.y > headingElement!.y), 'Footer sits deterministically below heading');
 
-// 5. Handling Missing Assets Gracefully
-console.log('\n[Test Suite 5: Handling Missing Optional Assets]');
+// 6. Handling Missing Assets Gracefully
+console.log('\n[Test Suite 6: Handling Missing Optional Assets]');
 const noLogoLayout = LayoutEngine.computeLayout({
   template,
   content: validContent,
@@ -130,8 +149,15 @@ const noLogoLayout = LayoutEngine.computeLayout({
 assert(!noLogoLayout.elements.some((e) => e.type === 'logo'), 'Gracefully handles omitted logo asset');
 assert(!noLogoLayout.elements.some((e) => e.type === 'background'), 'Gracefully handles omitted background image');
 
-// 6. Backend API Request Validation (Zod)
-console.log('\n[Test Suite 6: API Request Validation]');
+// 7. Every registered output format resolves deterministically
+console.log('\n[Test Suite 7: Format Registry Coverage]');
+for (const format of DEFAULT_POSTER_FORMATS) {
+  const formatLayout = LayoutEngine.computeLayout({ template, content: validContent, assets: { backgroundImages: [], backgroundFit: 'cover', formatAdjustments: {} }, format });
+  assert(formatLayout.canvasWidth === format.width && formatLayout.canvasHeight === format.height && Boolean(formatLayout.templateId), `Resolves ${format.name} with its configured output dimensions`);
+}
+
+// 8. Backend API Request Validation (Zod)
+console.log('\n[Test Suite 8: API Request Validation]');
 const validPayload = {
   name: 'Q4 Launch Campaign',
   templateId: 'modern-minimal',

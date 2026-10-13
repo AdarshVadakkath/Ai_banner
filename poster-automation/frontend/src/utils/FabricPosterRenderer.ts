@@ -40,16 +40,25 @@ export class FabricPosterRenderer {
             crossOrigin: 'anonymous',
           });
 
-          // Compute cover scaling
+          // Respect the resolved fit mode. The layout engine owns offsets and
+          // scale; the renderer only performs aspect-ratio-preserving fitting.
           const imgW = img.width || 1;
           const imgH = img.height || 1;
-          const scale = Math.max(canvasWidth / imgW, canvasHeight / imgH);
+          const targetWidth = el.width || canvasWidth;
+          const targetHeight = el.height || canvasHeight;
+          const scale = (el.imageFit || 'cover') === 'contain'
+            ? Math.min(targetWidth / imgW, targetHeight / imgH)
+            : Math.max(targetWidth / imgW, targetHeight / imgH);
+          const actualWidth = imgW * scale;
+          const actualHeight = imgH * scale;
+          const centeredLeft = (canvasWidth - actualWidth) / 2;
+          const centeredTop = (canvasHeight - actualHeight) / 2;
 
           img.set({
-            left: el.x !== undefined ? el.x : (canvasWidth - imgW * scale) / 2,
-            top: el.y !== undefined ? el.y : (canvasHeight - imgH * scale) / 2,
-            scaleX: scale * (el.width ? el.width / canvasWidth : 1),
-            scaleY: scale * (el.height ? el.height / canvasHeight : 1),
+            left: centeredLeft + (el.x || 0),
+            top: centeredTop + (el.y || 0),
+            scaleX: scale,
+            scaleY: scale,
             selectable: isInteractive,
             hasControls: false,
             hasBorders: isInteractive,
@@ -159,6 +168,12 @@ export class FabricPosterRenderer {
           splitByGrapheme: false,
           data: { id: el.id, type: el.type },
         });
+        // Fabric aligns horizontally but has no native vertical alignment for
+        // Textbox. Position the measured block within its resolved canvas box.
+        const verticalAlign = (el as any).verticalAlign || 'top';
+        if (verticalAlign !== 'top' && el.height > textbox.height) {
+          textbox.set({ top: el.y + (verticalAlign === 'middle' ? (el.height - textbox.height) / 2 : el.height - textbox.height) });
+        }
 
         canvas.add(textbox);
       } else if (el.type === 'cta-button' && el.text) {
@@ -206,11 +221,15 @@ export class FabricPosterRenderer {
         });
         canvas.add(btnRect);
 
+        // Position from the physical centre of the button. Textbox padding is
+        // not a vertical-alignment mechanism and was making labels sit high.
+        const labelInset = Math.max(4, Math.round((el.height || 32) * 0.16));
         const btnTextbox = new Textbox(el.text, {
-          left: el.x,
-          top: el.y,
-          width: el.width,
-          height: el.height,
+          left: el.x + el.width / 2,
+          top: el.y + el.height / 2,
+          originX: 'center',
+          originY: 'center',
+          width: Math.max(1, el.width - labelInset * 2),
           fontSize: el.fontSize || 16,
           fontFamily: el.fontFamily || 'Plus Jakarta Sans',
           fontWeight: el.fontWeight || '700',
@@ -224,7 +243,8 @@ export class FabricPosterRenderer {
           borderColor: '#38BDF8',
           hoverCursor: isInteractive ? 'move' : 'default',
           data: { id: el.id, type: el.type },
-          padding: Math.round(((el.height || 48) - (el.fontSize || 16)) / 2),
+          padding: 0,
+          splitByGrapheme: true,
         });
         canvas.add(btnTextbox);
       } else if (el.type === 'shape') {

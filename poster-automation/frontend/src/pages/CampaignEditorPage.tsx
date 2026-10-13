@@ -16,17 +16,18 @@ import {
   SAMPLE_BACKGROUND_2,
   SAMPLE_BACKGROUND_3,
 } from '../constants/sampleData';
-import { LayoutEngine } from '../utils/LayoutEngine';
+import { LayoutEngine, calculateCtaDimensions } from '../utils/LayoutEngine';
 import { FabricPosterRenderer } from '../utils/FabricPosterRenderer';
 import { ApiService } from '../services/apiService';
 import { PosterGalleryModal, GeneratedPosterItem } from '../components/poster/PosterGalleryModal';
 import JSZip from 'jszip';
 import {
   Layers, Link2, Download, MoreHorizontal, MousePointer2, Square, Circle, Triangle,
-  Type, Image as ImageIcon, ChevronDown, ChevronRight, ChevronUp, Eye, EyeOff, Trash2, RotateCcw,
+  Type, Image as ImageIcon, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, Eye, EyeOff, Trash2, RotateCcw,
   Search, Plus, Minus, AlignLeft, AlignCenter, AlignRight, Check, CheckCircle2,
-  Sparkles, Upload, X, ZoomIn, ZoomOut, LayoutGrid, FolderArchive, ArrowLeft, RefreshCw, Pencil,
+  Sparkles, Upload, X, ZoomIn, ZoomOut, LayoutGrid, FolderArchive, ArrowLeft, Pencil,
   ArrowUp, ArrowDown, Copy, Palette, Sliders, Move,
+  Lock, Unlock, Undo2, Redo2,
 } from 'lucide-react';
 
 const CHAR_LIMITS: Record<string, number> = {
@@ -50,6 +51,7 @@ export interface CustomElementStyle {
   lineHeight?: number;
   letterSpacing?: number;
   textAlign?: 'left' | 'center' | 'right';
+  verticalAlign?: 'top' | 'middle' | 'bottom';
   color?: string;
   x?: number;
   y?: number;
@@ -64,6 +66,8 @@ export interface CustomElementStyle {
 
 export interface CustomLayerItem {
   id: string;
+  /** The ratio this object belongs to, so it never appears in other canvases. */
+  formatId: string;
   type: 'text' | 'shape' | 'cta-button';
   shapeType?: 'rect' | 'circle' | 'triangle';
   ctaType?: 'primary' | 'secondary' | 'tertiary';
@@ -85,6 +89,7 @@ export interface CustomLayerItem {
   borderRadius?: number;
   opacity?: number;
   textAlign?: 'left' | 'center' | 'right';
+  verticalAlign?: 'top' | 'middle' | 'bottom';
   scale?: number;
   gradient?: GradientConfig;
 }
@@ -127,6 +132,12 @@ interface SetupModalProps {
     dateText: string;
     locationText: string;
     ctaText: string;
+    headingColor: string;
+    supportingColor: string;
+    introColor: string;
+    footerColor: string;
+    ctaBackground: string;
+    ctaTextColor: string;
   }) => void;
 }
 
@@ -145,6 +156,149 @@ const PRESET_COLORS = [
   '#F59E0B', '#10B981', '#14B8A6'
 ];
 
+interface FullscreenPreviewProps {
+  posters: GeneratedPosterItem[];
+  activeIndex: number | null;
+  onActiveIndexChange: (index: number) => void;
+  onClose: () => void;
+}
+
+type EditorSnapshot = {
+  content: CampaignContent;
+  assets: CampaignAssets;
+  customLayers: CustomLayerItem[];
+  overrides: Record<string, Record<string, CustomElementStyle>>;
+  hidden: string[];
+  deleted: string[];
+  locked: string[];
+  layerOrder: string[];
+  layerNames: Record<string, string>;
+};
+
+const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
+const hexToRgb = (hex: string) => {
+  const normalized = hex.replace('#', '');
+  const value = normalized.length === 3 ? normalized.split('').map(c => c + c).join('') : normalized;
+  const n = Number.parseInt(value, 16);
+  return Number.isFinite(n) ? { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 } : { r: 255, g: 255, b: 255 };
+};
+const rgbToHex = (r: number, g: number, b: number) => `#${[r, g, b].map(v => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')).join('')}`;
+const rgbToHsv = (r: number, g: number, b: number) => {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  const h = d === 0 ? 0 : max === r ? ((g - b) / d + (g < b ? 6 : 0)) * 60 : max === g ? ((b - r) / d + 2) * 60 : ((r - g) / d + 4) * 60;
+  return { h: Math.round(h), s: max === 0 ? 0 : Math.round(d / max * 100), v: Math.round(max * 100) };
+};
+const hsvToHex = (h: number, s: number, v: number) => {
+  const c = (v / 100) * (s / 100), x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v / 100 - c;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return rgbToHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
+};
+const rgbToHsl = (r: number, g: number, b: number) => {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), lightness = (max + min) / 2, d = max - min;
+  const hue = d === 0 ? 0 : max === r ? ((g - b) / d + (g < b ? 6 : 0)) * 60 : max === g ? ((b - r) / d + 2) * 60 : ((r - g) / d + 4) * 60;
+  return { h: Math.round(hue), s: Math.round((d === 0 ? 0 : d / (1 - Math.abs(2 * lightness - 1))) * 100), l: Math.round(lightness * 100) };
+};
+const hslToHex = (h: number, s: number, l: number) => {
+  s /= 100; l /= 100; const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return rgbToHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
+};
+
+const FigmaColorPicker: React.FC<{ color: string; opacity: number; onChange: (color: string, opacity: number) => void; onClose: () => void }> = ({ color, opacity, onChange, onClose }) => {
+  const [hex, setHex] = useState(color);
+  const rgb = hexToRgb(hex);
+  const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+  const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+  const areaRef = useRef<HTMLDivElement>(null);
+  const apply = (next: string, nextOpacity = opacity) => { setHex(next); onChange(next, nextOpacity); };
+  const pickArea = (event: React.PointerEvent<HTMLDivElement>) => {
+    const rect = areaRef.current?.getBoundingClientRect(); if (!rect) return;
+    apply(hsvToHex(hsv.h, clamp((event.clientX - rect.left) / rect.width) * 100, (1 - clamp((event.clientY - rect.top) / rect.height)) * 100));
+  };
+  const eyeDropper = async () => {
+    const EyeDropperApi = (window as any).EyeDropper;
+    if (!EyeDropperApi) return;
+    try { const result = await new EyeDropperApi().open(); apply(result.sRGBHex); } catch { /* picker cancelled */ }
+  };
+  return <div className="absolute top-8 right-0 z-50 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-2xl" onPointerDown={e => e.stopPropagation()}>
+    <div className="mb-3 flex items-center justify-between"><span className="text-xs font-bold text-slate-800">Color</span><button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="w-3.5 h-3.5" /></button></div>
+    <div ref={areaRef} onPointerDown={pickArea} onPointerMove={e => { if (e.buttons) pickArea(e); }} className="relative h-36 cursor-crosshair overflow-hidden rounded-lg" style={{ background: `hsl(${hsv.h}, 100%, 50%)` }}>
+      <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, #fff, transparent)' }} /><div className="absolute inset-0" style={{ background: 'linear-gradient(to top, #000, transparent)' }} />
+      <span className="absolute h-3 w-3 rounded-full border-2 border-white shadow" style={{ left: `calc(${hsv.s}% - 6px)`, top: `calc(${100 - hsv.v}% - 6px)` }} />
+    </div>
+    <input aria-label="Hue" type="range" min="0" max="360" value={hsv.h} onChange={e => apply(hsvToHex(+e.target.value, hsv.s, hsv.v))} className="mt-3 h-2 w-full cursor-pointer" style={{ accentColor: `hsl(${hsv.h}, 100%, 50%)` }} />
+    <input aria-label="Opacity" type="range" min="0" max="1" step="0.01" value={opacity} onChange={e => apply(hex, +e.target.value)} className="mt-2 h-2 w-full cursor-pointer" style={{ accentColor: hex }} />
+    <div className="mt-3 grid grid-cols-4 gap-1.5 text-[10px] font-mono">
+      <input value={hex.toUpperCase()} onChange={e => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) apply(e.target.value); else setHex(e.target.value); }} className="col-span-2 rounded border border-slate-200 px-2 py-1.5 uppercase" aria-label="Hex" />
+      {[rgb.r, rgb.g, rgb.b].map((v, i) => <input key={i} value={v} onChange={e => { const values = [rgb.r, rgb.g, rgb.b]; values[i] = +e.target.value; apply(rgbToHex(values[0], values[1], values[2])); }} className="rounded border border-slate-200 px-1 py-1.5 text-center" aria-label={['Red', 'Green', 'Blue'][i]} />)}
+      <input value={`H ${hsl.h}`} onChange={e => apply(hslToHex(+e.target.value.replace(/\D/g, ''), hsl.s, hsl.l))} className="rounded border border-slate-200 px-1 py-1.5" aria-label="Hue value" />
+      <input value={`S ${hsl.s}`} onChange={e => apply(hslToHex(hsl.h, +e.target.value.replace(/\D/g, ''), hsl.l))} className="rounded border border-slate-200 px-1 py-1.5" aria-label="Saturation value" />
+      <input value={`L ${hsl.l}`} onChange={e => apply(hslToHex(hsl.h, hsl.s, +e.target.value.replace(/\D/g, '')))} className="rounded border border-slate-200 px-1 py-1.5" aria-label="Lightness value" />
+      <button onClick={eyeDropper} disabled={!(window as any).EyeDropper} className="rounded border border-slate-200 px-1 py-1.5 text-slate-600 disabled:opacity-40" title="Pick a color from the screen">Pick</button>
+    </div>
+    <div className="mt-3 grid grid-cols-7 gap-1.5">{PRESET_COLORS.map(swatch => <button key={swatch} onClick={() => apply(swatch)} className="h-6 rounded-md border border-slate-200 shadow-sm hover:scale-110" style={{ backgroundColor: swatch }} title={swatch} />)}</div>
+  </div>;
+};
+
+const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({ posters, activeIndex, onActiveIndexChange, onClose }) => {
+  const isOpen = activeIndex !== null && posters.length > 0;
+  const safeIndex = activeIndex === null ? 0 : Math.max(0, Math.min(activeIndex, posters.length - 1));
+  const activePoster = posters[safeIndex];
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        onActiveIndexChange((safeIndex + 1) % posters.length);
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        onActiveIndexChange((safeIndex - 1 + posters.length) % posters.length);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, safeIndex, posters.length, onActiveIndexChange, onClose]);
+
+  if (!isOpen || !activePoster) return null;
+
+  const goPrevious = () => onActiveIndexChange((safeIndex - 1 + posters.length) % posters.length);
+  const goNext = () => onActiveIndexChange((safeIndex + 1) % posters.length);
+
+  return (
+    <div className="fixed inset-0 z-[70] bg-slate-950/95 backdrop-blur-sm flex flex-col animate-fade-in" role="dialog" aria-modal="true" aria-label="Banner preview">
+      <header className="h-16 shrink-0 px-4 sm:px-6 border-b border-white/10 flex items-center justify-between text-white">
+        <div>
+          <h2 className="text-sm font-bold">{activePoster.format.name}</h2>
+          <p className="text-xs text-slate-400">{activePoster.width} × {activePoster.height} px · {activePoster.format.aspectRatioLabel} · {safeIndex + 1} of {posters.length}</p>
+        </div>
+        <button onClick={onClose} className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold flex items-center gap-1.5 transition-colors" title="Exit preview (Esc)">
+          <X className="w-4 h-4" /> Exit <span className="hidden sm:inline text-slate-400">Esc</span>
+        </button>
+      </header>
+
+      <div className="relative flex-1 min-h-0 flex items-center justify-center p-6 sm:p-12">
+        <img src={activePoster.dataUrl} alt={activePoster.format.name} className="max-w-full max-h-full object-contain rounded shadow-2xl" />
+        <button onClick={goPrevious} className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/45 hover:bg-black/70 border border-white/15 text-white transition-colors" title="Previous banner (Left Arrow)">
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+        <button onClick={goNext} className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/45 hover:bg-black/70 border border-white/15 text-white transition-colors" title="Next banner (Right Arrow)">
+          <ChevronRight className="w-6 h-6" />
+        </button>
+      </div>
+
+      <footer className="shrink-0 h-12 flex items-center justify-center text-xs text-slate-400 border-t border-white/10">
+        Use <kbd className="mx-1 rounded bg-white/10 px-1.5 py-0.5 text-white">←</kbd><kbd className="mr-1 rounded bg-white/10 px-1.5 py-0.5 text-white">→</kbd> to browse · <kbd className="rounded bg-white/10 px-1.5 py-0.5 text-white">Esc</kbd> to exit
+      </footer>
+    </div>
+  );
+};
+
 const CampaignSetupModal: React.FC<SetupModalProps> = ({ onConfirm }) => {
   const [name, setName] = React.useState('New Campaign');
   const [introText, setIntroText] = React.useState('Special Announcement');
@@ -155,6 +309,12 @@ const CampaignSetupModal: React.FC<SetupModalProps> = ({ onConfirm }) => {
   const [dateText, setDateText] = React.useState('November 18, 2026');
   const [locationText, setLocationText] = React.useState('Global Broadcast & In-Person');
   const [ctaText, setCtaText] = React.useState('Book your study →');
+  const [headingColor, setHeadingColor] = React.useState('#FFFFFF');
+  const [supportingColor, setSupportingColor] = React.useState('#E2E8F0');
+  const [introColor, setIntroColor] = React.useState('#FFFFFF');
+  const [footerColor, setFooterColor] = React.useState('#E2E8F0');
+  const [ctaBackground, setCtaBackground] = React.useState('#3B82F6');
+  const [ctaTextColor, setCtaTextColor] = React.useState('#FFFFFF');
   const [logoPreview, setLogoPreview] = React.useState<string | undefined>(SAMPLE_LOGO_URL);
   const [logoDim, setLogoDim] = React.useState<{ width?: number; height?: number; aspect?: number }>({ width: 280, height: 100, aspect: 2.8 });
   const [bgPreview, setBgPreview] = React.useState<string | undefined>(SAMPLE_BACKGROUND_1);
@@ -300,12 +460,30 @@ const CampaignSetupModal: React.FC<SetupModalProps> = ({ onConfirm }) => {
               <input type="text" value={ctaText} onChange={e => setCtaText(e.target.value)}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500" placeholder="Book your study →" />
             </div>
+            <div className="pt-3 border-t border-slate-100">
+              <span className="text-xs font-bold text-slate-900 block mb-2">Campaign colors</span>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ['Heading text', headingColor, setHeadingColor],
+                  ['Supporting text', supportingColor, setSupportingColor],
+                  ['Intro badge', introColor, setIntroColor],
+                  ['Date & venue', footerColor, setFooterColor],
+                  ['CTA background', ctaBackground, setCtaBackground],
+                  ['CTA label', ctaTextColor, setCtaTextColor],
+                ].map(([label, value, setValue]) => (
+                  <label key={label as string} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px] font-medium text-slate-600">
+                    <span>{label as string}</span>
+                    <input type="color" value={value as string} onChange={event => (setValue as React.Dispatch<React.SetStateAction<string>>)(event.target.value)} className="h-7 w-9 cursor-pointer rounded border border-slate-300 bg-white p-0.5" />
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end space-x-3">
           <p className="text-xs text-slate-400 flex-1">All 11 formats (Square, Story, Banner, etc.) auto-generated.</p>
-          <button onClick={() => onConfirm({ name, logoUrl: logoPreview, logoWidth: logoDim.width, logoHeight: logoDim.height, logoAspectRatio: logoDim.aspect, backgroundUrl: bgPreview, introText, mainHeading, supportingParagraph, dateText, locationText, ctaText })}
+          <button onClick={() => onConfirm({ name, logoUrl: logoPreview, logoWidth: logoDim.width, logoHeight: logoDim.height, logoAspectRatio: logoDim.aspect, backgroundUrl: bgPreview, introText, mainHeading, supportingParagraph, dateText, locationText, ctaText, headingColor, supportingColor, introColor, footerColor, ctaBackground, ctaTextColor })}
             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl flex items-center space-x-2 transition-colors shadow-md shadow-blue-200 cursor-pointer">
             <Sparkles className="w-4 h-4" /><span>Generate Campaign</span>
           </button>
@@ -355,9 +533,17 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   const [selectedLayerId, setSelectedLayerId] = useState<string>('element-heading');
   const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
   const [deletedLayerIds, setDeletedLayerIds] = useState<Set<string>>(new Set());
+  // Layer metadata is deliberately separate from render data: locked layers still render,
+  // but never participate in canvas selection or transforms.
+  const [lockedLayerIds, setLockedLayerIds] = useState<Set<string>>(new Set());
 
   // Independent canvas aspect ratio management: format ID -> element ID -> CustomElementStyle
   const [perFormatOverrides, setPerFormatOverrides] = useState<Record<string, Record<string, CustomElementStyle>>>({});
+  const overrideHistoryRef = useRef<EditorSnapshot[]>([]);
+  const overrideRedoRef = useRef<EditorSnapshot[]>([]);
+  const overridesRef = useRef(perFormatOverrides);
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [showColorPanel, setShowColorPanel] = useState(false);
 
   // Layer ordering state (from top to bottom in layers list: index 0 is topmost visual layer)
   const [layerOrder, setLayerOrder] = useState<string[]>([]);
@@ -375,6 +561,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   // View & export state
   const [isExporting, setIsExporting] = useState(false);
   const [viewMode, setViewMode] = useState<'all-formats' | 'single'>('all-formats');
+  const [playgroundZoom, setPlaygroundZoom] = useState(1);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -382,6 +569,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   const [showAddLayerMenu, setShowAddLayerMenu] = useState(false);
   const [showGalleryModal, setShowGalleryModal] = useState(false);
   const [generatedPosters, setGeneratedPosters] = useState<GeneratedPosterItem[]>([]);
+  const [previewPosterIndex, setPreviewPosterIndex] = useState<number | null>(null);
   const [layerSearch, setLayerSearch] = useState('');
 
   // Drag and drop in layers list
@@ -411,11 +599,46 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   const colorInputRef = useRef<HTMLInputElement>(null);
   const gradientColor1Ref = useRef<HTMLInputElement>(null);
   const gradientColor2Ref = useRef<HTMLInputElement>(null);
+  const renderRequestRef = useRef(0);
 
   const currentTemplate = useMemo(() => templates.find(t => t.id === selectedTemplateId) || BUILTIN_TEMPLATES[0], [templates, selectedTemplateId]);
 
   // Current active format style overrides
   const currentFormatOverrides = useMemo(() => perFormatOverrides[activeFormat.id] || {}, [perFormatOverrides, activeFormat.id]);
+
+  useEffect(() => { overridesRef.current = perFormatOverrides; }, [perFormatOverrides]);
+
+  const makeSnapshot = (): EditorSnapshot => JSON.parse(JSON.stringify({
+    content, assets, customLayers, overrides: perFormatOverrides,
+    hidden: [...hiddenLayers], deleted: [...deletedLayerIds], locked: [...lockedLayerIds], layerOrder, layerNames,
+  }));
+  const commitOverrideHistory = () => {
+    overrideHistoryRef.current = [...overrideHistoryRef.current.slice(-49), makeSnapshot()];
+    overrideRedoRef.current = [];
+    setHistoryVersion(version => version + 1);
+  };
+  const restoreSnapshot = (snapshot: EditorSnapshot) => {
+    setContent(snapshot.content); setAssets(snapshot.assets); setCustomLayers(snapshot.customLayers);
+    setPerFormatOverrides(snapshot.overrides); setHiddenLayers(new Set(snapshot.hidden)); setDeletedLayerIds(new Set(snapshot.deleted));
+    setLockedLayerIds(new Set(snapshot.locked)); setLayerOrder(snapshot.layerOrder); setLayerNames(snapshot.layerNames);
+    setSelectedLayerId(''); fabricCanvasRef.current?.discardActiveObject(); fabricCanvasRef.current?.requestRenderAll();
+  };
+  const undoOverrides = () => {
+    const previous = overrideHistoryRef.current.pop();
+    if (!previous) return;
+    overrideRedoRef.current.push(makeSnapshot());
+    restoreSnapshot(previous);
+    setHistoryVersion(version => version + 1);
+    showToast('Undid last style change');
+  };
+  const redoOverrides = () => {
+    const next = overrideRedoRef.current.pop();
+    if (!next) return;
+    overrideHistoryRef.current.push(makeSnapshot());
+    restoreSnapshot(next);
+    setHistoryVersion(version => version + 1);
+    showToast('Redid style change');
+  };
 
   // Load initial project if provided
   useEffect(() => {
@@ -446,9 +669,25 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  // Keep browser zoom untouched: Ctrl/Cmd + wheel only zooms the editor playground.
+  // A native non-passive listener is required for preventDefault to reliably stop browser zoom.
+  useEffect(() => {
+    const playground = containerRef.current;
+    if (!playground) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const direction = event.deltaY < 0 ? 1 : -1;
+      setPlaygroundZoom(current => Math.min(2.5, Math.max(0.35, Math.round((current + direction * 0.1) * 100) / 100)));
+    };
+    playground.addEventListener('wheel', onWheel, { passive: false });
+    return () => playground.removeEventListener('wheel', onWheel);
+  }, []);
+
   // Helper to update styling for selected element on the current active format (independent canvas)
   const updateSelectedElementStyle = (patch: Partial<CustomElementStyle>) => {
-    if (!selectedLayerId) return;
+    if (!selectedLayerId || lockedLayerIds.has(selectedLayerId)) return;
+    commitOverrideHistory();
     setPerFormatOverrides(prev => {
       const fmtMap = prev[activeFormat.id] || {};
       const existing = fmtMap[selectedLayerId] || {};
@@ -464,7 +703,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
   // Scaling helper
   const scaleSelectedLayer = (delta: number) => {
-    if (!selectedLayerId) return;
+    if (!selectedLayerId || lockedLayerIds.has(selectedLayerId)) return;
     const current = currentFormatOverrides[selectedLayerId] || {};
     const currentScale = current.scale ?? 1;
     const newScale = Math.max(0.2, Math.min(3.0, currentScale + delta));
@@ -480,7 +719,9 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
       format: activeFormat,
     });
 
-    const customResolvedElements: ResolvedElement[] = customLayers.map(cl => {
+    const customResolvedElements: ResolvedElement[] = customLayers
+      .filter(cl => cl.formatId === activeFormat.id)
+      .map(cl => {
       const overrides = currentFormatOverrides[cl.id] || {};
       const scale = overrides.scale ?? cl.scale ?? 1;
       return {
@@ -499,6 +740,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
         lineHeight: overrides.lineHeight ?? cl.lineHeight ?? 1.2,
         letterSpacing: overrides.letterSpacing ?? cl.letterSpacing,
         textAlign: overrides.textAlign ?? cl.textAlign ?? 'left',
+        verticalAlign: overrides.verticalAlign ?? cl.verticalAlign ?? 'top',
         color: overrides.color ?? cl.color ?? (cl.type === 'text' ? '#FFFFFF' : (currentTemplate.colorScheme.accent || '#3B82F6')),
         fill: overrides.fill ?? cl.fill ?? (cl.type === 'cta-button' ? '#E5173F' : (currentTemplate.colorScheme.accent || '#3B82F6')),
         borderColor: overrides.borderColor ?? cl.borderColor,
@@ -520,6 +762,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
         fontSize: overrides.fontSize ?? el.fontSize,
         lineHeight: overrides.lineHeight ?? el.lineHeight,
         textAlign: overrides.textAlign ?? el.textAlign,
+        verticalAlign: overrides.verticalAlign ?? (el as any).verticalAlign ?? 'top',
         color: overrides.color ?? el.color,
         letterSpacing: overrides.letterSpacing ?? el.letterSpacing,
         fill: overrides.fill ?? el.fill,
@@ -570,11 +813,13 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   }, [layout, deletedLayerIds, hiddenLayers]);
 
   const selectedElement = useMemo(() => {
+    if (!selectedLayerId) return null;
     if (deletedLayerIds.has(selectedLayerId)) return null;
-    return layout.elements.find((el: ResolvedElement) => el.id === selectedLayerId) || layout.elements.find((el: ResolvedElement) => !deletedLayerIds.has(el.id) && el.id === 'element-heading') || null;
+    return layout.elements.find((el: ResolvedElement) => el.id === selectedLayerId) || null;
   }, [layout, selectedLayerId, deletedLayerIds]);
 
   const selectedElementStyle = currentFormatOverrides[selectedLayerId] || {};
+  const isSelectedLayerLocked = selectedElement ? lockedLayerIds.has(selectedElement.id) : false;
   const currentScale = selectedElementStyle.scale ?? 1;
   const currentFontFamily = selectedElementStyle.fontFamily || (selectedElement ? selectedElement.fontFamily : 'Inter') || 'Inter';
   const currentFontWeight = selectedElementStyle.fontWeight || (selectedElement ? selectedElement.fontWeight : 'Bold') || 'Bold';
@@ -585,7 +830,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   const currentFill = selectedElementStyle.fill || (selectedElement ? (selectedElement.fill || '#3B82F6') : '#3B82F6');
   const currentGradient = selectedElementStyle.gradient || selectedElement?.gradient;
 
-  const previewScale = useMemo(() => 560 / activeFormat.width, [activeFormat]);
+  const previewScale = useMemo(() => (560 / activeFormat.width) * playgroundZoom, [activeFormat, playgroundZoom]);
   const displayWidth = Math.round(activeFormat.width * previewScale);
   const displayHeight = Math.round(activeFormat.height * previewScale);
 
@@ -623,6 +868,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     cTemplate: PosterTemplate,
     openModal = false
   ) => {
+    const requestId = ++renderRequestRef.current;
     try {
       setIsGeneratingAll(true);
       const results: GeneratedPosterItem[] = [];
@@ -665,17 +911,15 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
           });
 
         const customResolvedElements: ResolvedElement[] = customLayers
-          .filter(cl => !deletedLayerIds.has(cl.id) && !hiddenLayers.has(cl.id))
+          .filter(cl => cl.formatId === fmt.id && !deletedLayerIds.has(cl.id) && !hiddenLayers.has(cl.id))
           .map(cl => {
             const overrides = fmtOverrides[cl.id] || {};
             const scale = overrides.scale ?? cl.scale ?? 1;
-            const scaleX = fmt.width / (activeFormat?.width || 1080);
-            const scaleY = fmt.height / (activeFormat?.height || 1080);
-            const posX = overrides.x !== undefined ? Math.round(overrides.x * scaleX) : Math.round(cl.x * scaleX);
-            const posY = overrides.y !== undefined ? Math.round(overrides.y * scaleY) : Math.round(cl.y * scaleY);
-            const width = Math.round((cl.width || 200) * scale * scaleX);
-            const height = Math.round((cl.height || 60) * scale * scaleY);
-            const fontSize = Math.round((overrides.fontSize ?? cl.fontSize ?? 32) * Math.min(scaleX, scaleY));
+            const posX = overrides.x !== undefined ? overrides.x : cl.x;
+            const posY = overrides.y !== undefined ? overrides.y : cl.y;
+            const width = Math.round((cl.width || 200) * scale);
+            const height = Math.round((cl.height || 60) * scale);
+            const fontSize = overrides.fontSize ?? cl.fontSize ?? 32;
 
             return {
               id: cl.id,
@@ -728,11 +972,11 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
         });
       }
 
-      setGeneratedPosters(results);
+      if (renderRequestRef.current === requestId) {
+        setGeneratedPosters(results);
+      }
       if (openModal) {
         setShowGalleryModal(true);
-      } else {
-        setViewMode('all-formats');
       }
     } catch (err) {
       console.error('Render all formats error:', err);
@@ -756,6 +1000,12 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     dateText: string;
     locationText: string;
     ctaText: string;
+    headingColor: string;
+    supportingColor: string;
+    introColor: string;
+    footerColor: string;
+    ctaBackground: string;
+    ctaTextColor: string;
   }) => {
     setProjectName(data.name);
     const newContent: CampaignContent = {
@@ -768,6 +1018,19 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
       ctaText: data.ctaText,
     };
     setContent(newContent);
+    const campaignTemplate: PosterTemplate = {
+      ...currentTemplate,
+      colorScheme: {
+        ...currentTemplate.colorScheme,
+        textPrimary: data.headingColor,
+        textSecondary: data.supportingColor,
+        introText: data.introColor,
+        footerText: data.footerColor,
+        ctaBackground: data.ctaBackground,
+        ctaText: data.ctaTextColor,
+      },
+    };
+    setTemplates((previous) => previous.map((template) => template.id === campaignTemplate.id ? campaignTemplate : template));
     let newAssets = { ...assets };
     if (data.logoUrl) {
       newAssets.logoUrl = data.logoUrl;
@@ -811,20 +1074,35 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
       console.warn('Auto-create project error:', err);
     }
 
-    setTimeout(() => {
-      renderAllFormatsWithData(data.name, newContent, newAssets, currentTemplate, false);
-    }, 50);
   };
+  const updateContent = (patch: Partial<CampaignContent>) => { commitOverrideHistory(); setContent(prev => ({ ...prev, ...patch })); };
 
+  // Keep every ratio preview current. Changes are batched briefly so dragging or typing
+  // does not start a render for every individual pointer/input event.
   useEffect(() => {
-    if (!showSetupModal && generatedPosters.length === 0) {
-      renderAllFormatsWithData(projectName, content, assets, currentTemplate, false);
-    }
-  }, [showSetupModal]);
+    if (showSetupModal) return;
+    const timer = window.setTimeout(() => {
+      void renderAllFormatsWithData(projectName, content, assets, currentTemplate, false);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [
+    showSetupModal,
+    projectName,
+    content,
+    assets,
+    currentTemplate,
+    perFormatOverrides,
+    customLayers,
+    deletedLayerIds,
+    hiddenLayers,
+    layerOrder,
+  ]);
 
   // Dragging and resizing on canvas
   const handleStartDrag = (layerId: string, e: React.MouseEvent) => {
     e.stopPropagation(); e.preventDefault();
+    if (lockedLayerIds.has(layerId)) return;
+    commitOverrideHistory();
     setSelectedLayerId(layerId);
     const el = layout.elements.find((item: ResolvedElement) => item.id === layerId);
     if (!el) return;
@@ -834,6 +1112,8 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
   const handleStartResize = (layerId: string, corner: 'nw' | 'ne' | 'se' | 'sw', e: React.MouseEvent) => {
     e.stopPropagation(); e.preventDefault();
+    if (lockedLayerIds.has(layerId)) return;
+    commitOverrideHistory();
     setSelectedLayerId(layerId);
     const el = layout.elements.find((item: ResolvedElement) => item.id === layerId);
     if (!el) return;
@@ -947,7 +1227,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
       { id: 'element-logo', label: layerNames['element-logo'] || 'Brand Logo', type: 'logo' },
       { id: 'element-background', label: layerNames['element-background'] || 'Background Image', type: 'background' },
     ];
-    const customs = customLayers.map(cl => ({
+    const customs = customLayers.filter(cl => cl.formatId === activeFormat.id).map(cl => ({
       id: cl.id,
       label: layerNames[cl.id] || cl.label,
       type: cl.type,
@@ -955,7 +1235,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
       ctaType: cl.ctaType,
     }));
     return [...base, ...customs];
-  }, [customLayers, layerNames]);
+  }, [customLayers, layerNames, activeFormat.id]);
 
   // Order allLayerDefs according to layerOrder
   const sortedLayers = useMemo(() => {
@@ -984,6 +1264,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
   // Add layer handlers
   const handleAddTextLayer = () => {
+    commitOverrideHistory();
     const id = `custom-text-${Date.now()}`;
     const textNumber = customLayers.filter(l => l.type === 'text').length + 1;
     const canvasWidth = activeFormat.width || 1080;
@@ -991,6 +1272,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
     const newLayer: CustomLayerItem = {
       id,
+      formatId: activeFormat.id,
       type: 'text',
       label: `Text ${textNumber}`,
       text: 'Add your text here',
@@ -1016,6 +1298,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   };
 
   const handleAddShapeLayer = (shapeType: 'rect' | 'circle' = 'rect') => {
+    commitOverrideHistory();
     const id = `custom-shape-${Date.now()}`;
     const shapeNumber = customLayers.filter(l => l.type === 'shape').length + 1;
     const canvasWidth = activeFormat.width || 1080;
@@ -1024,6 +1307,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
     const newLayer: CustomLayerItem = {
       id,
+      formatId: activeFormat.id,
       type: 'shape',
       shapeType,
       label: shapeType === 'circle' ? `Circle ${shapeNumber}` : `Rectangle ${shapeNumber}`,
@@ -1047,32 +1331,38 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   };
 
   // Add CTA Button (Primary, Secondary, Tertiary)
-  const handleAddCtaButton = (type: 'secondary' | 'tertiary') => {
+  const handleAddCtaButton = (type: 'primary' | 'secondary' | 'tertiary') => {
+    commitOverrideHistory();
     const id = `cta-${type}-${Date.now()}`;
     const canvasWidth = activeFormat.width || 1080;
     const canvasHeight = activeFormat.height || 1080;
-    const btnWidth = Math.round(canvasWidth * 0.3);
-    const btnHeight = 56;
-
+    const isPrimary = type === 'primary';
     const isSecondary = type === 'secondary';
+    const buttonText = isPrimary ? 'Get Started' : isSecondary ? 'Learn More' : 'Contact Sales';
+    const dimensions = calculateCtaDimensions(buttonText, Math.round(canvasWidth * 0.72), Math.min(canvasWidth, canvasHeight), type, {
+      fontFamily: currentTemplate.typography.headingFontFamily,
+      fontWeight: '700',
+      });
+    const ctaIndex = customLayers.filter((layer) => layer.type === 'cta-button').length;
     const newLayer: CustomLayerItem = {
       id,
+      formatId: activeFormat.id,
       type: 'cta-button',
       ctaType: type,
-      label: isSecondary ? 'Secondary CTA Button' : 'Tertiary CTA Button',
-      text: isSecondary ? 'Learn More' : 'Contact Sales →',
+      label: `${type.charAt(0).toUpperCase() + type.slice(1)} CTA Button`,
+      text: buttonText,
       x: Math.round(canvasWidth * 0.1),
-      y: Math.round(canvasHeight * 0.85 + (isSecondary ? 0 : 70)),
-      width: btnWidth,
-      height: btnHeight,
-      fontSize: 18,
+      y: Math.max(Math.round(canvasHeight * 0.18), canvasHeight - Math.round(canvasHeight * 0.1) - dimensions.height - ctaIndex * (dimensions.height + 12)),
+      width: dimensions.width,
+      height: dimensions.height,
+      fontSize: dimensions.fontSize,
       fontFamily: currentTemplate.typography.headingFontFamily || 'Plus Jakarta Sans',
       fontWeight: 'Bold',
-      color: '#FFFFFF',
-      fill: isSecondary ? 'transparent' : 'rgba(255,255,255,0.08)',
-      borderColor: isSecondary ? '#FFFFFF' : 'transparent',
-      borderWidth: isSecondary ? 2 : 0,
-      borderRadius: Math.round(btnHeight * 0.35),
+      color: isPrimary ? (currentTemplate.colorScheme.ctaText || '#FFFFFF') : currentTemplate.colorScheme.accent,
+      fill: isPrimary ? (currentTemplate.colorScheme.ctaBackground || currentTemplate.colorScheme.secondary) : 'transparent',
+      borderColor: isSecondary ? currentTemplate.colorScheme.accent : 'transparent',
+      borderWidth: isSecondary ? Math.max(1, Math.round(dimensions.height * 0.04)) : 0,
+      borderRadius: type === 'tertiary' ? 0 : Math.round(dimensions.height * 0.35),
       opacity: 1,
       textAlign: 'center',
       scale: 1,
@@ -1082,16 +1372,18 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     setLayerOrder(prev => [id, ...prev]);
     setSelectedLayerId(id);
     if (viewMode === 'all-formats') setViewMode('single');
-    showToast(`Added ${isSecondary ? 'Secondary' : 'Tertiary'} CTA Button`);
+    showToast(`Added ${type} CTA Button`);
   };
 
   const handleDuplicateLayer = (layerId: string) => {
+    if (lockedLayerIds.has(layerId)) return;
     const cl = customLayers.find(l => l.id === layerId);
     if (!cl) {
       showToast('Cannot duplicate built-in layers');
       return;
     }
     const newId = `custom-${cl.type}-${Date.now()}`;
+    commitOverrideHistory();
     const copy: CustomLayerItem = {
       ...cl,
       id: newId,
@@ -1107,6 +1399,8 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
   // Move layer up / down in stack
   const handleMoveLayer = (layerId: string, direction: 'up' | 'down') => {
+    if (lockedLayerIds.has(layerId)) return;
+    commitOverrideHistory();
     setLayerOrder(prev => {
       const idx = prev.indexOf(layerId);
       if (idx === -1) return prev;
@@ -1123,6 +1417,10 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
   // Drag and drop layer reordering
   const handleLayerDragStart = (e: React.DragEvent, id: string) => {
+    if (lockedLayerIds.has(id)) {
+      e.preventDefault();
+      return;
+    }
     setDraggedLayerId(id);
     e.dataTransfer.effectAllowed = 'move';
   };
@@ -1134,7 +1432,8 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
   const handleLayerDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
-    if (!draggedLayerId || draggedLayerId === targetId) return;
+    if (!draggedLayerId || draggedLayerId === targetId || lockedLayerIds.has(draggedLayerId)) return;
+    commitOverrideHistory();
     setLayerOrder(prev => {
       const fromIdx = prev.indexOf(draggedLayerId);
       const toIdx = prev.indexOf(targetId);
@@ -1150,6 +1449,8 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
   const handleDeleteLayer = (layerId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (lockedLayerIds.has(layerId)) return;
+    commitOverrideHistory();
     if (layerId.startsWith('custom-') || layerId.startsWith('cta-')) {
       setCustomLayers(prev => prev.filter(l => l.id !== layerId));
     } else {
@@ -1163,6 +1464,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   };
 
   const handleRestoreLayer = (layerId: string) => {
+    commitOverrideHistory();
     setDeletedLayerIds(prev => { const next = new Set(prev); next.delete(layerId); return next; });
     setSelectedLayerId(layerId);
     setShowAddLayerMenu(false);
@@ -1170,6 +1472,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   };
 
   const handleRestoreAllLayers = () => {
+    commitOverrideHistory();
     setDeletedLayerIds(new Set());
     setShowAddLayerMenu(false);
     showToast('All layers restored');
@@ -1177,7 +1480,19 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
   const toggleLayerVisibility = (layerId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    commitOverrideHistory();
     setHiddenLayers(prev => {
+      const next = new Set(prev);
+      if (next.has(layerId)) next.delete(layerId);
+      else next.add(layerId);
+      return next;
+    });
+  };
+
+  const toggleLayerLock = (layerId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    commitOverrideHistory();
+    setLockedLayerIds(prev => {
       const next = new Set(prev);
       if (next.has(layerId)) next.delete(layerId);
       else next.add(layerId);
@@ -1190,6 +1505,12 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
+        e.preventDefault();
+        if (e.shiftKey || e.key.toLowerCase() === 'y') redoOverrides();
+        else undoOverrides();
+        return;
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedLayerId) {
         e.preventDefault();
         handleDeleteLayer(selectedLayerId);
@@ -1197,7 +1518,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedLayerId, deletedLayerIds]);
+  }, [selectedLayerId, deletedLayerIds, lockedLayerIds, perFormatOverrides]);
 
   // Exports
   const handleQuickExport = async () => {
@@ -1214,20 +1535,6 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     } catch (err) {
       console.error('Export failed:', err);
       showToast('Export failed.');
-    } finally {
-      setIsExporting(false);
-      setShowExportMenu(false);
-    }
-  };
-
-  const handleGenerateAll = async () => {
-    try {
-      setIsExporting(true);
-      await renderAllFormatsWithData(projectName, content, assets, currentTemplate, false);
-      showToast('All 11 formats updated in playground!');
-    } catch (err) {
-      console.error('Generate all failed:', err);
-      showToast('Failed to generate all formats.');
     } finally {
       setIsExporting(false);
       setShowExportMenu(false);
@@ -1432,17 +1739,17 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   };
 
   const handleSelectedTextChange = (newText: string) => {
-    if (!selectedElement) return;
+    if (!selectedElement || lockedLayerIds.has(selectedElement.id)) return;
     if (selectedElement.id === 'element-intro') {
-      setContent(prev => ({ ...prev, introText: newText.slice(0, CHAR_LIMITS['element-intro']) }));
+      updateContent({ introText: newText.slice(0, CHAR_LIMITS['element-intro']) });
     } else if (selectedElement.id === 'element-heading') {
-      setContent(prev => ({ ...prev, mainHeading: newText.slice(0, CHAR_LIMITS['element-heading']) }));
+      updateContent({ mainHeading: newText.slice(0, CHAR_LIMITS['element-heading']) });
     } else if (selectedElement.id === 'element-paragraph') {
-      setContent(prev => ({ ...prev, supportingParagraph: newText.slice(0, CHAR_LIMITS['element-paragraph']) }));
+      updateContent({ supportingParagraph: newText.slice(0, CHAR_LIMITS['element-paragraph']) });
     } else if (selectedElement.id === 'element-footer') {
-      setContent(prev => ({ ...prev, locationText: newText.slice(0, CHAR_LIMITS['element-footer']) }));
+      updateContent({ locationText: newText.slice(0, CHAR_LIMITS['element-footer']) });
     } else if (selectedElement.id === 'element-cta') {
-      setContent(prev => ({ ...prev, ctaText: newText.slice(0, CHAR_LIMITS['element-cta']) }));
+      updateContent({ ctaText: newText.slice(0, CHAR_LIMITS['element-cta']) });
     } else {
       setCustomLayers(prev => prev.map(l => l.id === selectedElement.id ? { ...l, text: newText } : l));
     }
@@ -1507,6 +1814,18 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
               <MousePointer2 className="w-3.5 h-3.5" />
               <span>Canvas ({activeFormat.aspectRatioLabel})</span>
             </button>
+            <button
+              onClick={() => {
+                const activeIndex = Math.max(0, generatedPosters.findIndex(item => item.format.id === activeFormat.id));
+                setPreviewPosterIndex(activeIndex);
+              }}
+              disabled={generatedPosters.length === 0}
+              className="px-3 py-1 text-xs font-semibold rounded-md transition-all flex items-center space-x-1.5 cursor-pointer text-slate-600 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Open full-screen banner preview"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Preview</span>
+            </button>
           </div>
 
           <div className="flex items-center space-x-2 relative">
@@ -1544,9 +1863,6 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                   <button onClick={handleQuickExport} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700">
                     <Download className="w-3.5 h-3.5 text-blue-600" /><span>Download Active (PNG)</span>
                   </button>
-                  <button onClick={handleGenerateAll} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700">
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" /><span>Regenerate All Formats</span>
-                  </button>
                   <button onClick={handleDownloadAllZip} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700">
                     <FolderArchive className="w-3.5 h-3.5 text-emerald-600" /><span>Download ZIP (All Formats)</span>
                   </button>
@@ -1563,6 +1879,13 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
         {/* SUB-HEADER TYPOGRAPHY & QUICK TOOLBAR */}
         <div className="h-10 border-b border-slate-200 bg-white px-3 flex items-center justify-between shrink-0 text-xs z-20 overflow-x-auto">
           <div className="flex items-center space-x-1 shrink-0">
+            <button onClick={undoOverrides} disabled={overrideHistoryRef.current.length === 0} className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-35 text-slate-600 transition-colors cursor-pointer" title="Undo (Ctrl/Cmd + Z)">
+              <Undo2 className="w-4 h-4" />
+            </button>
+            <button onClick={redoOverrides} disabled={overrideRedoRef.current.length === 0} className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-35 text-slate-600 transition-colors cursor-pointer" title="Redo (Ctrl/Cmd + Shift + Z)">
+              <Redo2 className="w-4 h-4" />
+            </button>
+            <div className="h-4 w-px bg-slate-200 mx-0.5" />
             <button
               onClick={() => { setActiveTool('select'); showToast('Select tool active — click any section to select'); }}
               className={`p-1.5 rounded transition-colors cursor-pointer ${activeTool === 'select' ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200' : 'hover:bg-slate-100 text-slate-600'}`}
@@ -1654,6 +1977,15 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
               </button>
             </div>
 
+            <div className="flex items-center space-x-0.5" title="Vertical text alignment">
+              {(['top', 'middle', 'bottom'] as const).map(value => (
+                <button key={value} onClick={() => updateSelectedElementStyle({ verticalAlign: value })}
+                  className={`px-1.5 py-1 text-[10px] font-bold rounded ${selectedElementStyle.verticalAlign === value || (!selectedElementStyle.verticalAlign && value === 'top') ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}>
+                  {value === 'top' ? '↑' : value === 'middle' ? '↕' : '↓'}
+                </button>
+              ))}
+            </div>
+
             <div className="h-4 w-px bg-slate-200" />
 
             {/* Scale Controls */}
@@ -1689,7 +2021,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
             {/* Color Swatch */}
             <div className="flex items-center space-x-1.5 relative">
               <div
-                onClick={() => colorInputRef.current?.click()}
+                onClick={() => setShowColorPanel(open => !open)}
                 className="w-5 h-5 rounded border border-slate-300 cursor-pointer hover:scale-105 transition-transform"
                 style={{ backgroundColor: currentColor }}
               >
@@ -1702,6 +2034,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                 />
               </div>
               <span className="text-[11px] font-mono text-slate-600 uppercase">{currentColor}</span>
+              {showColorPanel && <FigmaColorPicker color={currentColor.startsWith('#') ? currentColor : '#FFFFFF'} opacity={currentOpacity} onChange={(color, opacity) => updateSelectedElementStyle({ color, opacity })} onClose={() => setShowColorPanel(false)} />}
             </div>
 
             {selectedElement && (
@@ -1847,16 +2180,6 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
                   <div className="flex items-center space-x-2">
                     <button
-                      onClick={() => handleGenerateAll()}
-                      disabled={isGeneratingAll}
-                      className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg flex items-center space-x-1.5 transition-colors shadow-2xs cursor-pointer"
-                      title="Update all banner formats with current settings"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingAll ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
-                      <span>{isGeneratingAll ? 'Rendering...' : 'Update Previews'}</span>
-                    </button>
-
-                    <button
                       onClick={handleDownloadAllZip}
                       disabled={downloadingZip || generatedPosters.length === 0}
                       className="px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
@@ -1884,7 +2207,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                       <span className="text-xs text-slate-500 font-medium">Generating deterministic layouts for all 11 formats...</span>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" style={{ zoom: playgroundZoom }}>
                       {generatedPosters.map((item) => (
                         <div
                           key={item.format.id}
@@ -1962,6 +2285,23 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center space-x-2 text-[11px] text-slate-500">
+                    <div className="flex items-center rounded border border-slate-200 bg-white">
+                      <button
+                        onClick={() => setPlaygroundZoom(current => Math.max(0.35, Math.round((current - 0.1) * 100) / 100))}
+                        className="p-1 text-slate-500 hover:bg-slate-100"
+                        title="Zoom out playground"
+                      >
+                        <ZoomOut className="w-3 h-3" />
+                      </button>
+                      <span className="w-10 text-center font-mono text-slate-600">{Math.round(playgroundZoom * 100)}%</span>
+                      <button
+                        onClick={() => setPlaygroundZoom(current => Math.min(2.5, Math.round((current + 0.1) * 100) / 100))}
+                        className="p-1 text-slate-500 hover:bg-slate-100"
+                        title="Zoom in playground"
+                      >
+                        <ZoomIn className="w-3 h-3" />
+                      </button>
+                    </div>
                     <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-700 font-mono border border-sky-200 font-bold">
                       {activeFormat.width} × {activeFormat.height} px
                     </span>
@@ -1969,7 +2309,13 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                   </div>
                 </div>
 
-                <div className="flex-1 flex items-center justify-center p-8 overflow-auto">
+                <div className="flex-1 flex items-center justify-center p-8 overflow-auto" onMouseDown={event => {
+                  if (event.target !== event.currentTarget) return;
+                  setSelectedLayerId('');
+                  setShowColorPanel(false);
+                  fabricCanvasRef.current?.discardActiveObject();
+                  fabricCanvasRef.current?.requestRenderAll();
+                }}>
                   <div
                     className="relative bg-slate-900 shadow-2xl rounded-sm transition-all"
                     style={{ width: `${displayWidth}px`, height: `${displayHeight}px` }}
@@ -1982,7 +2328,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                     />
 
                     {/* Interactive drag & corner scaling overlay */}
-                    {selectedElement && (
+                    {selectedElement && !isSelectedLayerLocked && (
                       <div
                         className="absolute pointer-events-auto border-2 border-sky-400 bg-sky-400/10 cursor-move group transition-all"
                         style={{
@@ -2013,15 +2359,18 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                       </div>
                     )}
 
-                    {/* Click-to-select hotspots for all active elements */}
+                    {/* Elements are painted bottom-to-top; the same DOM order makes the
+                        topmost hotspot receive pointer events first. Locked layers retain
+                        their pixels but have no hit target, so clicks pass through. */}
                     {activeElements.map(el => {
                       if (el.id === selectedElement?.id) return null;
+                      const isLocked = lockedLayerIds.has(el.id);
                       return (
                         <div
                           key={el.id}
-                          onClick={() => setSelectedLayerId(el.id)}
+                          onClick={() => { if (!isLocked) setSelectedLayerId(el.id); }}
                           onMouseDown={e => handleStartDrag(el.id, e)}
-                          className="absolute pointer-events-auto hover:border hover:border-sky-300 hover:bg-sky-400/5 cursor-pointer transition-colors"
+                          className={`absolute ${isLocked ? 'pointer-events-none' : 'pointer-events-auto hover:border hover:border-sky-300 hover:bg-sky-400/5 cursor-pointer'} transition-colors`}
                           style={{
                             left: `${Math.round(el.x * previewScale)}px`,
                             top: `${Math.round(el.y * previewScale)}px`,
@@ -2073,6 +2422,9 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                         <button onClick={() => { handleAddShapeLayer('circle'); setShowAddLayerMenu(false); }} className="w-full text-left px-2.5 py-1.5 hover:bg-blue-50 text-blue-700 font-medium rounded flex items-center space-x-2">
                           <Circle className="w-3.5 h-3.5" /><span>+ Add Circle</span>
                         </button>
+                        <button onClick={() => { handleAddCtaButton('primary'); setShowAddLayerMenu(false); }} className="w-full text-left px-2.5 py-1.5 hover:bg-blue-50 text-blue-700 font-medium rounded flex items-center space-x-2">
+                          <Plus className="w-3.5 h-3.5" /><span>+ Primary CTA Button</span>
+                        </button>
                         <button onClick={() => { handleAddCtaButton('secondary'); setShowAddLayerMenu(false); }} className="w-full text-left px-2.5 py-1.5 hover:bg-blue-50 text-blue-700 font-medium rounded flex items-center space-x-2">
                           <Plus className="w-3.5 h-3.5" /><span>+ Secondary CTA Button</span>
                         </button>
@@ -2097,22 +2449,23 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                 {filteredLayers.map((layer, idx) => {
                   const isSelected = selectedLayerId === layer.id;
                   const isHidden = hiddenLayers.has(layer.id);
+                  const isLocked = lockedLayerIds.has(layer.id);
                   const isEditingName = editingLayerNameId === layer.id;
 
                   return (
                     <div
                       key={layer.id}
-                      draggable
+                      draggable={!isLocked}
                       onDragStart={e => handleLayerDragStart(e, layer.id)}
                       onDragOver={handleLayerDragOver}
                       onDrop={e => handleLayerDrop(e, layer.id)}
-                      onClick={() => setSelectedLayerId(layer.id)}
+                      onClick={() => { if (!isLocked) setSelectedLayerId(layer.id); }}
                       className={`group flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
-                        isSelected ? 'bg-blue-50 text-blue-700 font-semibold ring-1 ring-blue-200' : 'hover:bg-slate-50 text-slate-700'
+                        isLocked ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : isSelected ? 'bg-blue-50 text-blue-700 font-semibold ring-1 ring-blue-200' : 'hover:bg-slate-50 text-slate-700'
                       }`}
                     >
                       <div className="flex items-center space-x-1.5 truncate flex-1 min-w-0 mr-1">
-                        <Move className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 cursor-grab shrink-0" />
+                        <Move className={`w-3 h-3 shrink-0 ${isLocked ? 'text-slate-200' : 'text-slate-300 opacity-0 group-hover:opacity-100 cursor-grab'}`} />
                         {layer.type === 'background' ? (
                           <Square className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600' : 'text-slate-400'}`} />
                         ) : layer.type === 'logo' ? (
@@ -2172,7 +2525,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                           onClick={e => { e.stopPropagation(); handleMoveLayer(layer.id, 'up'); }}
                           className="p-0.5 text-slate-400 hover:text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity rounded"
                           title="Bring Forward (Up)"
-                          disabled={idx === 0}
+                          disabled={idx === 0 || isLocked}
                         >
                           <ChevronUp className="w-3 h-3" />
                         </button>
@@ -2180,7 +2533,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                           onClick={e => { e.stopPropagation(); handleMoveLayer(layer.id, 'down'); }}
                           className="p-0.5 text-slate-400 hover:text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity rounded"
                           title="Send Backward (Down)"
-                          disabled={idx === filteredLayers.length - 1}
+                          disabled={idx === filteredLayers.length - 1 || isLocked}
                         >
                           <ChevronDown className="w-3 h-3" />
                         </button>
@@ -2188,8 +2541,16 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                           onClick={e => { e.stopPropagation(); setEditingLayerNameId(layer.id); }}
                           className="p-0.5 text-slate-400 hover:text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity rounded"
                           title="Rename layer"
+                          disabled={isLocked}
                         >
                           <Pencil className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={e => toggleLayerLock(layer.id, e)}
+                          className={`p-0.5 rounded transition-opacity ${isLocked ? 'text-amber-600 opacity-100' : 'text-slate-400 opacity-0 group-hover:opacity-100 hover:text-slate-700'}`}
+                          title={isLocked ? 'Unlock layer' : 'Lock layer'}
+                        >
+                          {isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
                         </button>
                         <button
                           onClick={e => toggleLayerVisibility(layer.id, e)}
@@ -2202,6 +2563,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                           onClick={e => handleDeleteLayer(layer.id, e)}
                           className="p-0.5 rounded text-slate-400 opacity-0 group-hover:opacity-100 hover:text-red-600 transition-opacity"
                           title="Delete layer"
+                          disabled={isLocked}
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -2224,7 +2586,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                   </span>
                 </div>
                 <div className="flex items-center space-x-1">
-                  {selectedElement && selectedElement.id.startsWith('custom-') && (
+                  {selectedElement && selectedElement.id.startsWith('custom-') && !isSelectedLayerLocked && (
                     <button
                       onClick={() => handleDuplicateLayer(selectedElement.id)}
                       className="text-slate-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50 transition-colors"
@@ -2233,7 +2595,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                       <Copy className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  {selectedElement && (
+                  {selectedElement && !isSelectedLayerLocked && (
                     <button
                       onClick={() => handleDeleteLayer(selectedElement.id)}
                       className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
@@ -2244,6 +2606,13 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                   )}
                 </div>
               </div>
+
+              {isSelectedLayerLocked && (
+                <div className="px-3 py-2 bg-amber-50 border-b border-amber-100 text-[11px] text-amber-800 flex items-center space-x-1.5">
+                  <Lock className="w-3.5 h-3.5 shrink-0" />
+                  <span>This layer is locked. Unlock it in the Layers panel to edit or transform it.</span>
+                </div>
+              )}
 
               {/* REAL-TIME LIVE TEXT EDITOR (Syncs directly with canvas on typing) */}
               {(isTextElement || isCtaElement) && (
@@ -2261,7 +2630,8 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                     rows={3}
                     value={getSelectedText()}
                     onChange={e => handleSelectedTextChange(e.target.value)}
-                    className="w-full bg-white border border-blue-200 rounded px-2.5 py-1.5 text-slate-800 text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors resize-none leading-relaxed"
+                    disabled={isSelectedLayerLocked}
+                    className="w-full bg-white border border-blue-200 rounded px-2.5 py-1.5 text-slate-800 text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors resize-none leading-relaxed disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     placeholder="Type to update canvas in real time..."
                   />
                   <span className="text-[10px] text-slate-400 block italic">Updates canvas instantly as you type</span>
@@ -2327,6 +2697,18 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                       </span>
                     </div>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-slate-600">Button Label Color</span>
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        type="color"
+                        value={currentColor.startsWith('#') ? currentColor : '#FFFFFF'}
+                        onChange={e => updateSelectedElementStyle({ color: e.target.value })}
+                        className="w-5 h-5 rounded border border-slate-300 cursor-pointer"
+                      />
+                      <span className="text-[11px] font-mono text-slate-600">{currentColor}</span>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -2387,7 +2769,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                           <input
                             type="color"
                             value={currentFill.startsWith('#') ? currentFill : '#3B82F6'}
-                            onChange={e => updateSelectedElementStyle({ fill: e.target.value, color: e.target.value })}
+                            onChange={e => updateSelectedElementStyle({ fill: e.target.value })}
                             className="w-5 h-5 rounded border border-slate-300 cursor-pointer"
                           />
                           <span className="text-[11px] font-mono text-slate-700">{currentFill}</span>
@@ -2397,7 +2779,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                         {PRESET_COLORS.map(c => (
                           <div
                             key={c}
-                            onClick={() => updateSelectedElementStyle({ fill: c, color: c })}
+                            onClick={() => updateSelectedElementStyle({ fill: c })}
                             className="w-6 h-6 rounded border border-slate-200 cursor-pointer hover:scale-110 transition-transform shadow-2xs"
                             style={{ backgroundColor: c }}
                             title={c}
@@ -2503,7 +2885,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                       <input
                         type="text"
                         value={content.introText}
-                        onChange={e => setContent(prev => ({ ...prev, introText: e.target.value.slice(0, CHAR_LIMITS['element-intro']) }))}
+                        onChange={e => updateContent({ introText: e.target.value.slice(0, CHAR_LIMITS['element-intro']) })}
                         className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none transition-colors"
                       />
                     </div>
@@ -2515,7 +2897,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                       <input
                         type="text"
                         value={content.mainHeading}
-                        onChange={e => setContent(prev => ({ ...prev, mainHeading: e.target.value.slice(0, CHAR_LIMITS['element-heading']) }))}
+                        onChange={e => updateContent({ mainHeading: e.target.value.slice(0, CHAR_LIMITS['element-heading']) })}
                         className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none transition-colors font-medium"
                       />
                     </div>
@@ -2527,7 +2909,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                       <textarea
                         rows={3}
                         value={content.supportingParagraph}
-                        onChange={e => setContent(prev => ({ ...prev, supportingParagraph: e.target.value.slice(0, CHAR_LIMITS['element-paragraph']) }))}
+                        onChange={e => updateContent({ supportingParagraph: e.target.value.slice(0, CHAR_LIMITS['element-paragraph']) })}
                         className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none transition-colors resize-none leading-relaxed"
                       />
                     </div>
@@ -2537,7 +2919,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                         <input
                           type="text"
                           value={content.dateText}
-                          onChange={e => setContent(prev => ({ ...prev, dateText: e.target.value }))}
+                          onChange={e => updateContent({ dateText: e.target.value })}
                           className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-xs"
                         />
                       </div>
@@ -2546,7 +2928,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                         <input
                           type="text"
                           value={content.locationText}
-                          onChange={e => setContent(prev => ({ ...prev, locationText: e.target.value.slice(0, CHAR_LIMITS['element-footer']) }))}
+                          onChange={e => updateContent({ locationText: e.target.value.slice(0, CHAR_LIMITS['element-footer']) })}
                           className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-xs"
                         />
                       </div>
@@ -2556,7 +2938,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                       <input
                         type="text"
                         value={content.ctaText}
-                        onChange={e => setContent(prev => ({ ...prev, ctaText: e.target.value }))}
+                        onChange={e => updateContent({ ctaText: e.target.value })}
                         className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none"
                       />
                     </div>
@@ -2697,6 +3079,13 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
             setAssets(newAssets);
             showToast('Updated across all formats');
           }}
+        />
+
+        <FullscreenPreview
+          posters={generatedPosters}
+          activeIndex={previewPosterIndex}
+          onActiveIndexChange={setPreviewPosterIndex}
+          onClose={() => setPreviewPosterIndex(null)}
         />
       </div>
     </>
