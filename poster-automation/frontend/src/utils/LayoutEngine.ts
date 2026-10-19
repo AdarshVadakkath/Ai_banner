@@ -144,7 +144,10 @@ function getTextContext(): TextContext | null {
 function textWidth(value: string, fontSize: number, fontFamily = 'sans-serif', fontWeight = '400', letterSpacing = 0): number {
   const context = getTextContext();
   if (context) {
-    context.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+    const cleanFamily = fontFamily.includes(' ') && !fontFamily.startsWith('"') && !fontFamily.startsWith("'")
+      ? `"${fontFamily}", sans-serif`
+      : fontFamily;
+    context.font = `${fontWeight} ${fontSize}px ${cleanFamily}`;
     return context.measureText(value).width + Math.max(0, [...value].length - 1) * letterSpacing;
   }
   // SSR/test fallback only; browser rendering always uses the actual loaded font.

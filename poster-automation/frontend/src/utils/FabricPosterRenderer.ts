@@ -1,5 +1,6 @@
 import { Canvas, FabricImage, Textbox, Rect, Gradient, Circle } from 'fabric';
 import { ResolvedPosterLayout, ResolvedElement } from '../types/poster';
+import { waitForFonts } from './fontPreloader';
 
 export interface RenderOptions {
   isInteractive?: boolean;
@@ -18,6 +19,11 @@ export class FabricPosterRenderer {
   ): Promise<void> {
     const { isInteractive = false, previewScale = 1.0, onElementModified } = options;
     const { canvasWidth, canvasHeight, elements } = layout;
+
+    // Wait for Google Fonts to finish loading before rendering any text.
+    // Without this, Fabric.js Textbox objects use fallback font metrics,
+    // producing wrong line breaks and positions on first production visit.
+    await waitForFonts();
 
     // Reset canvas objects
     canvas.clear();
@@ -336,6 +342,9 @@ export class FabricPosterRenderer {
    * Renders a high-resolution export image (PNG data URL) for a format without touching the visible DOM.
    */
   public static async renderToDataURL(layout: ResolvedPosterLayout): Promise<string> {
+    // Ensure fonts are ready before offscreen rendering for export images
+    await waitForFonts();
+
     const hiddenCanvasEl = document.createElement('canvas');
     hiddenCanvasEl.width = layout.canvasWidth;
     hiddenCanvasEl.height = layout.canvasHeight;

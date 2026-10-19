@@ -18,6 +18,7 @@ import {
 } from '../constants/sampleData';
 import { LayoutEngine, calculateCtaDimensions } from '../utils/LayoutEngine';
 import { FabricPosterRenderer } from '../utils/FabricPosterRenderer';
+import { waitForFonts } from '../utils/fontPreloader';
 import { ApiService } from '../services/apiService';
 import { PosterGalleryModal, GeneratedPosterItem } from '../components/poster/PosterGalleryModal';
 import JSZip from 'jszip';
@@ -572,6 +573,14 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
   const [generatedPosters, setGeneratedPosters] = useState<GeneratedPosterItem[]>([]);
   const [previewPosterIndex, setPreviewPosterIndex] = useState<number | null>(null);
   const [layerSearch, setLayerSearch] = useState('');
+  const [fontsReady, setFontsReady] = useState(false);
+
+  // Ensure Google Fonts are fully loaded into the browser before computing layouts & metrics
+  useEffect(() => {
+    void waitForFonts().then(() => {
+      setFontsReady(true);
+    });
+  }, []);
 
   // Drag and drop in layers list
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
@@ -796,7 +805,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     }
 
     return { ...baseLayout, elements: allCombined };
-  }, [activeFormat, currentTemplate, content, assets, currentFormatOverrides, customLayers, layerOrder]);
+  }, [activeFormat, currentTemplate, content, assets, currentFormatOverrides, customLayers, layerOrder, fontsReady]);
 
   // Keep layerOrder in sync with all current elements
   useEffect(() => {
@@ -872,6 +881,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     const requestId = ++renderRequestRef.current;
     try {
       setIsGeneratingAll(true);
+      await waitForFonts();
       const results: GeneratedPosterItem[] = [];
 
       for (const fmt of ALL_GENERATE_FORMATS) {
