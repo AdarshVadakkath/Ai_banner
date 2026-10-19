@@ -353,6 +353,12 @@ export class FabricPosterRenderer {
       width: layout.canvasWidth,
       height: layout.canvasHeight,
       selection: false,
+      // Exports must use the poster's requested pixel dimensions.  Fabric 7
+      // otherwise applies the browser's device-pixel ratio to this hidden
+      // canvas.  `toDataURL()` then returns a 2x bitmap with the poster drawn
+      // only in its top-left quarter on high-DPI displays (the production
+      // symptom seen in the format gallery).
+      enableRetinaScaling: false,
     });
 
     await this.renderToCanvas(offscreenCanvas, layout, {
