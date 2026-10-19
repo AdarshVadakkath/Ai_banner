@@ -18,12 +18,13 @@ export interface CampaignContent {
   supportingParagraph: string;
   dateText: string;
   locationText: string;
-  ctaText: string;
+  ctaText?: string;
 }
 
 export interface AssetRecord {
   id: string;
   url: string;
+  publicId?: string;
   name: string;
   width?: number;
   height?: number;
@@ -40,6 +41,7 @@ export interface FormatAdjustment {
 
 export interface CampaignAssets {
   logoUrl?: string;
+  logoPublicId?: string;
   logoWidth?: number;
   logoHeight?: number;
   logoAspectRatio?: number;
@@ -169,6 +171,20 @@ export interface ResolvedPosterLayout {
   isValid: boolean;
 }
 
+export interface CampaignImage {
+  id: string;
+  bannerId: string;
+  formatId: string;
+  aspectRatio: string;
+  width: number;
+  height: number;
+  imageUrl: string;
+  cloudinaryPublicId?: string;
+  fileSizeBytes?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface CampaignProject {
   id: string;
   name: string;
@@ -179,4 +195,7 @@ export interface CampaignProject {
   createdAt: string;
   updatedAt: string;
   thumbnailUrl?: string;
+  images?: CampaignImage[];
+  imagesByRatio?: Record<string, CampaignImage>;
+  imagesByFormat?: Record<string, CampaignImage>;
 }

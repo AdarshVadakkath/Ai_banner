@@ -6,6 +6,7 @@ import { projectsRouter } from './routes/projectsRoutes';
 import { templatesRouter } from './routes/templatesRoutes';
 import { assetsRouter } from './routes/assetsRoutes';
 import { StorageService } from './services/StorageService';
+import { randomUUID } from 'crypto';
 
 export const app = express();
 
@@ -16,6 +17,15 @@ StorageService.ensureDirectories().catch((err) => {
 
 // Middleware
 app.use(cors());
+app.use((req, res, next) => {
+  const match = req.headers.cookie?.match(/(?:^|;\s*)formatly_owner=([^;]+)/);
+  const ownerId = match?.[1] || randomUUID();
+  (req as express.Request & { ownerId?: string }).ownerId = ownerId;
+  if (!match) {
+    res.cookie('formatly_owner', ownerId, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 1000 * 60 * 60 * 24 * 365 });
+  }
+  next();
+});
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 

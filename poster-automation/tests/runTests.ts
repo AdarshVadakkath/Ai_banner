@@ -11,7 +11,7 @@ import {
 } from '../frontend/src/utils/LayoutEngine';
 import { BUILTIN_TEMPLATES } from '../frontend/src/constants/templates';
 import { DEFAULT_POSTER_FORMATS } from '../frontend/src/constants/formats';
-import { CreateProjectSchema } from '../backend/src/validators/schemas';
+import { CreateProjectSchema, BatchUploadImagesSchema } from '../backend/src/validators/schemas';
 
 let passedCount = 0;
 let failedCount = 0;
@@ -156,6 +156,53 @@ for (const format of DEFAULT_POSTER_FORMATS) {
   assert(formatLayout.canvasWidth === format.width && formatLayout.canvasHeight === format.height && Boolean(formatLayout.templateId), `Resolves ${format.name} with its configured output dimensions`);
 }
 
+// 7b. Skyscraper (160x600) Centered Alignment and Vertical Formation
+console.log('\n[Test Suite 7b: Skyscraper (160x600) Alignment & Formation]');
+const skyscraperFormat = DEFAULT_POSTER_FORMATS.find((f) => f.id === 'skyscraper')!;
+const skyscraperLayout = LayoutEngine.computeLayout({
+  template,
+  content: {
+    ...validContent,
+    ctaText: 'Book your study →',
+    introText: 'Special Announcement',
+    mainHeading: 'Delivering Relevance at Scale',
+    supportingParagraph: 'AI-driven solutions for smarter decisions and better outcomes.',
+    dateText: 'November 18, 2026',
+    locationText: 'Global Broadcast & In-Person',
+  },
+  assets: {
+    logoUrl: 'data:image/svg+xml;utf8,<svg width="40" height="40"></svg>',
+    logoAspectRatio: 1.0,
+    backgroundImages: [],
+    backgroundFit: 'cover',
+    formatAdjustments: {},
+  },
+  format: skyscraperFormat,
+});
+
+assert(skyscraperLayout.isValid, 'Skyscraper layout is marked valid with zero errors');
+const skyLogo = skyscraperLayout.elements.find((e) => e.type === 'logo')!;
+const skyIntro = skyscraperLayout.elements.find((e) => e.type === 'intro')!;
+const skyHeading = skyscraperLayout.elements.find((e) => e.type === 'heading')!;
+const skyPara = skyscraperLayout.elements.find((e) => e.type === 'paragraph')!;
+const skyCta = skyscraperLayout.elements.find((e) => e.type === 'cta-button')!;
+const skyFooter = skyscraperLayout.elements.find((e) => e.type === 'footer')!;
+
+assert(Boolean(skyLogo && skyIntro && skyHeading && skyPara && skyCta && skyFooter), 'Includes all skyscraper elements');
+assert(skyIntro.textAlign === 'center', 'Intro text is center aligned');
+assert(skyHeading.textAlign === 'center', 'Main heading is center aligned');
+assert(skyPara.textAlign === 'center', 'Supporting paragraph is center aligned');
+assert(skyCta.textAlign === 'center', 'CTA button is center aligned');
+assert(skyFooter.textAlign === 'center', 'Footer is center aligned');
+
+assert(skyLogo.x === Math.round((160 - skyLogo.width) / 2), 'Logo is horizontally centered at canvas midpoint');
+assert(skyCta.x === Math.round((160 - skyCta.width) / 2), 'CTA button is horizontally centered at canvas midpoint');
+assert(skyIntro.y < skyHeading.y, 'Intro precedes heading vertically');
+assert(skyHeading.y < skyPara.y, 'Heading precedes paragraph vertically');
+assert(skyPara.y < skyCta.y, 'Paragraph precedes CTA button vertically');
+assert(skyCta.y < skyFooter.y, 'CTA button precedes footer vertically');
+
+
 // 8. Backend API Request Validation (Zod)
 console.log('\n[Test Suite 8: API Request Validation]');
 const validPayload = {
@@ -181,6 +228,36 @@ const invalidPayload = {
 };
 const invalidParseResult = CreateProjectSchema.safeParse(invalidPayload);
 assert(!invalidParseResult.success, 'Rejects invalid project payload with empty name and empty formats');
+
+// 9. Multi-Aspect Ratio Batch Upload Validation (Zod)
+console.log('\n[Test Suite 9: Multi-Aspect Ratio Batch Upload Validation]');
+const validBatchPayload = {
+  images: [
+    {
+      formatId: 'skyscraper',
+      aspectRatio: '4:15',
+      width: 160,
+      height: 600,
+      dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    },
+    {
+      formatId: 'square-1200',
+      aspectRatio: '1:1',
+      width: 1200,
+      height: 1200,
+      dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    },
+  ],
+};
+const batchParseResult = BatchUploadImagesSchema.safeParse(validBatchPayload);
+assert(batchParseResult.success, 'Valid multi-aspect ratio batch payload passes validation');
+
+const invalidBatchPayload = {
+  images: [],
+};
+const invalidBatchResult = BatchUploadImagesSchema.safeParse(invalidBatchPayload);
+assert(!invalidBatchResult.success, 'Rejects empty images array in batch upload');
+
 
 // Summary
 console.log('\n========================================');

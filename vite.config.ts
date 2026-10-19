@@ -7,9 +7,13 @@ export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
+      extensions: ['.tsx', '.ts', '.jsx', '.js', '.json'],
       alias: {
         '@': path.resolve(import.meta.dirname || process.cwd(), '.'),
       },
+    },
+    optimizeDeps: {
+      include: ['@clerk/clerk-react', 'use-sync-external-store/shim'],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

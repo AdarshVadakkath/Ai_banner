@@ -244,7 +244,7 @@ export class FabricPosterRenderer {
           hoverCursor: isInteractive ? 'move' : 'default',
           data: { id: el.id, type: el.type },
           padding: 0,
-          splitByGrapheme: true,
+          splitByGrapheme: false,
         });
         canvas.add(btnTextbox);
       } else if (el.type === 'shape') {

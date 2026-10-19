@@ -27,7 +27,7 @@ import {
   Search, Plus, Minus, AlignLeft, AlignCenter, AlignRight, Check, CheckCircle2,
   Sparkles, Upload, X, ZoomIn, ZoomOut, LayoutGrid, FolderArchive, ArrowLeft, Pencil,
   ArrowUp, ArrowDown, Copy, Palette, Sliders, Move,
-  Lock, Unlock, Undo2, Redo2,
+  Lock, Unlock, Undo2, Redo2, Cloud,
 } from 'lucide-react';
 
 const CHAR_LIMITS: Record<string, number> = {
@@ -560,6 +560,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
 
   // View & export state
   const [isExporting, setIsExporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [viewMode, setViewMode] = useState<'all-formats' | 'single'>('all-formats');
   const [playgroundZoom, setPlaygroundZoom] = useState(1);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
@@ -867,7 +868,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     cAssets: CampaignAssets,
     cTemplate: PosterTemplate,
     openModal = false
-  ) => {
+  ): Promise<GeneratedPosterItem[]> => {
     const requestId = ++renderRequestRef.current;
     try {
       setIsGeneratingAll(true);
@@ -978,9 +979,11 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
       if (openModal) {
         setShowGalleryModal(true);
       }
+      return results;
     } catch (err) {
       console.error('Render all formats error:', err);
       showToast('Error rendering format previews');
+      return [];
     } finally {
       setIsGeneratingAll(false);
     }
@@ -1069,6 +1072,25 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
       });
       if (createdProj?.id) {
         setProjectId(createdProj.id);
+        void (async () => {
+          try {
+            const rendered = await renderAllFormatsWithData(data.name, newContent, newAssets, campaignTemplate, false);
+            if (rendered && rendered.length > 0) {
+              showToast(`Uploading all ${rendered.length} banner formats to Cloudinary & DB...`);
+              const payload = rendered.map((item) => ({
+                formatId: item.format.id,
+                aspectRatio: item.format.aspectRatioLabel,
+                width: item.width,
+                height: item.height,
+                dataUrl: item.dataUrl,
+              }));
+              await ApiService.uploadProjectImages(createdProj.id, payload);
+              showToast(`All ${rendered.length} formats saved to Cloudinary & Neon DB!`);
+            }
+          } catch (uploadErr) {
+            console.warn('Initial multi-ratio upload failed:', uploadErr);
+          }
+        })();
       }
     } catch (err) {
       console.warn('Auto-create project error:', err);
@@ -1608,16 +1630,39 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
         updatedAt: new Date().toISOString(),
         thumbnailUrl: thumb,
       };
-      if (projectId) {
-        await ApiService.updateProject(projectId, proj);
+      let activeId = projectId;
+      if (activeId) {
+        await ApiService.updateProject(activeId, proj);
       } else {
         const created = await ApiService.createProject({ ...proj, createdAt: new Date().toISOString() });
+        activeId = created.id;
         setProjectId(created.id);
       }
-      showToast('Campaign saved successfully!');
+      setIsSaving(true);
+      showToast('Saving campaign...');
+      let postersToUpload = generatedPosters;
+      if (postersToUpload.length === 0) {
+        showToast('Rendering all 11 format layouts...');
+        postersToUpload = await renderAllFormatsWithData(projectName, content, assets, currentTemplate, false);
+      }
+      if (activeId && postersToUpload.length > 0) {
+        const payload = postersToUpload.map((item) => ({
+          formatId: item.format.id,
+          aspectRatio: item.format.aspectRatioLabel,
+          width: item.width,
+          height: item.height,
+          dataUrl: item.dataUrl,
+        }));
+        showToast(`Uploading all ${postersToUpload.length} banners to Cloudinary & DB...`);
+        await ApiService.uploadProjectImages(activeId, payload);
+        showToast(`Saved! All ${postersToUpload.length} banners uploaded to Cloudinary & Database.`);
+      }
+
     } catch (e) {
       console.error('Save failed:', e);
       showToast('Saved locally.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1644,44 +1689,22 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     onBackToDashboard();
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const img = new Image();
-      img.onload = () => {
-        const aspect = img.naturalWidth / img.naturalHeight;
-        setAssets(prev => ({
-          ...prev,
-          logoUrl: dataUrl,
-          logoWidth: Math.min(320, img.naturalWidth),
-          logoHeight: Math.round(Math.min(320, img.naturalWidth) / aspect),
-          logoAspectRatio: aspect,
-        }));
-        setSelectedPresetLogo(null);
-        showToast('Logo updated');
-      };
-      img.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
+    try {
+      const asset = await ApiService.uploadAsset(file);
+      setAssets(prev => ({ ...prev, logoUrl: asset.url, logoAspectRatio: asset.aspectRatio, logoPublicId: asset.publicId }));
+      setSelectedPresetLogo(null);
+      showToast('Logo uploaded');
+    } catch (err) { console.error('Logo upload failed:', err); showToast('Logo upload failed. Please retry.'); }
   };
 
-  const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const newBg = {
-        id: `bg-upload-${Date.now()}`,
-        name: file.name,
-        url: dataUrl,
-        width: 1920,
-        height: 1920,
-        aspectRatio: 1.0,
-      };
+    try {
+      const newBg = await ApiService.uploadAsset(file);
       setAssets(prev => ({
         ...prev,
         backgroundImages: [newBg, ...prev.backgroundImages],
@@ -1689,8 +1712,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
       }));
       setSelectedPresetBg(null);
       showToast('Background uploaded');
-    };
-    reader.readAsDataURL(file);
+    } catch (err) { console.error('Background upload failed:', err); showToast('Background upload failed. Please retry.'); }
   };
 
   const handleSelectPresetLogo = (key: string, url: string, name: string) => {
@@ -1733,7 +1755,7 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
     if (selectedElement.id === 'element-heading') return content.mainHeading;
     if (selectedElement.id === 'element-paragraph') return content.supportingParagraph;
     if (selectedElement.id === 'element-footer') return content.locationText;
-    if (selectedElement.id === 'element-cta') return content.ctaText;
+    if (selectedElement.id === 'element-cta') return content.ctaText || '';
     const cl = customLayers.find(l => l.id === selectedElement.id);
     return cl?.text || selectedElement.text || '';
   };
@@ -1842,6 +1864,24 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
             >
               <Link2 className="w-3.5 h-3.5 text-slate-500" />
               <span>Share</span>
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+              title="Save campaign & upload all 11 banners to Cloudinary and Database"
+            >
+              {isSaving ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <>
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>Save to Cloud</span>
+                </>
+              )}
             </button>
             <button
               onClick={handleQuickExport}
@@ -2179,6 +2219,24 @@ export const CampaignEditorPage: React.FC<CampaignEditorPageProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleSave}
+                      disabled={isSaving || isGeneratingAll}
+                      className="px-3.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                      title="Upload and save all 11 banner formats to Cloudinary & Neon DB"
+                    >
+                      {isSaving ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+                          <span>Saving to Cloud...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Save All to Cloud</span>
+                        </>
+                      )}
+                    </button>
                     <button
                       onClick={handleDownloadAllZip}
                       disabled={downloadingZip || generatedPosters.length === 0}

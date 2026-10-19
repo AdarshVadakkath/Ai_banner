@@ -1,5 +1,6 @@
 import React from 'react';
 import { Layers, Plus, FolderKanban, HelpCircle, CheckCircle2 } from 'lucide-react';
+import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from '@clerk/clerk-react';
 
 interface HeaderProps {
   currentView: 'dashboard' | 'editor';
@@ -66,6 +67,33 @@ export const Header: React.FC<HeaderProps> = ({
             <Plus className="w-4 h-4" />
             <span>Create campaign</span>
           </button>
+
+          {Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) && (
+            <div className="flex items-center space-x-2 pl-3 border-l border-slate-200">
+              <SignedOut>
+                <SignInButton mode="modal">
+                  <button className="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+                    Sign In
+                  </button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <button className="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow-sm transition-all">
+                    Sign Up
+                  </button>
+                </SignUpButton>
+              </SignedOut>
+              <SignedIn>
+                <UserButton
+                  appearance={{
+                    elements: {
+                      avatarBox: 'w-8 h-8 rounded-full border border-slate-200 shadow-sm',
+                    },
+                  }}
+                  afterSignOutUrl="/"
+                />
+              </SignedIn>
+            </div>
+          )}
         </div>
       </div>
     </header>

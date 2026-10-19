@@ -1,9 +1,7 @@
 import { Request, Response } from 'express';
-import path from 'path';
-import fs from 'fs';
 import sharp from 'sharp';
 import multer from 'multer';
-import { StorageService } from '../services/StorageService';
+import { CloudinaryService } from '../services/CloudinaryService';
 
 // Configure multer memory storage so sharp can process before writing
 const upload = multer({
@@ -30,56 +28,49 @@ export const uploadAsset = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    await StorageService.ensureDirectories();
-    const uploadsDir = StorageService.getUploadsDir();
-
     const originalName = req.file.originalname || 'upload.png';
-    const ext = path.extname(originalName).toLowerCase() || '.png';
     const baseId = `asset-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const filename = `${baseId}${ext}`;
-    const targetPath = path.join(uploadsDir, filename);
 
     let width = 1200;
     let height = 800;
 
     if (req.file.mimetype === 'image/svg+xml') {
-      // For SVG, save directly
-      await fs.promises.writeFile(targetPath, req.file.buffer);
       width = 800;
       height = 600;
     } else {
-      // Use Sharp to read metadata and write optimized image
       const image = sharp(req.file.buffer);
       const metadata = await image.metadata();
 
       width = metadata.width || 1200;
       height = metadata.height || 800;
 
-      // If dimensions are excessively huge (>3000px), resize while preserving aspect ratio
       if (width > 3200 || height > 3200) {
-        await image
+        const resized = await image
           .resize({ width: 3200, height: 3200, fit: 'inside', withoutEnlargement: true })
-          .toFile(targetPath);
-      } else {
-        await fs.promises.writeFile(targetPath, req.file.buffer);
+          .toBuffer();
+        const resizedMetadata = await sharp(resized).metadata();
+        width = resizedMetadata.width || width;
+        height = resizedMetadata.height || height;
+        req.file.buffer = resized;
       }
     }
 
+    const uploaded = await CloudinaryService.uploadImage(req.file.buffer, req.file.mimetype, originalName);
     const aspectRatio = Number((width / height).toFixed(3));
-    const assetUrl = `/uploads/${filename}`;
 
     res.status(201).json({
       asset: {
         id: baseId,
-        url: assetUrl,
+        url: uploaded.secureUrl,
+        publicId: uploaded.publicId,
         name: originalName,
-        width,
-        height,
+        width: uploaded.width || width,
+        height: uploaded.height || height,
         aspectRatio,
       },
     });
   } catch (err: any) {
-    console.error('Asset upload error:', err);
-    res.status(500).json({ error: 'Asset processing failed', details: err.message });
+    console.error('Asset upload failed:', err?.message);
+    res.status(500).json({ error: 'Asset upload failed. Please retry.', details: err?.message });
   }
 };

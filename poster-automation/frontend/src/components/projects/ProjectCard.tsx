@@ -44,7 +44,13 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
         className="h-44 bg-slate-900/95 cursor-pointer relative flex items-center justify-center p-4 overflow-hidden border-b border-slate-100"
       >
         {/* Subtle background representation */}
-        {project.assets?.backgroundImages?.[0]?.url ? (
+        {project.thumbnailUrl ? (
+          <img
+            src={project.thumbnailUrl}
+            alt={project.name}
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+        ) : project.assets?.backgroundImages?.[0]?.url ? (
           <img
             src={project.assets.backgroundImages[0].url}
             alt={project.name}

@@ -3,8 +3,8 @@ import { z } from 'zod';
 export const PosterFormatSchema = z.object({
   id: z.string(),
   name: z.string(),
-  width: z.number().int().min(400).max(4000),
-  height: z.number().int().min(400).max(4000),
+  width: z.number().int().min(50).max(4000),
+  height: z.number().int().min(50).max(4000),
   aspectRatioLabel: z.string(),
   category: z.enum(['social', 'story', 'banner', 'display', 'custom']),
   isDefault: z.boolean().optional(),
@@ -23,6 +23,10 @@ export const CampaignContentSchema = z.object({
 export const AssetRecordSchema = z.object({
   id: z.string(),
   url: z.string(),
+  // Cloudinary's public ID is needed to manage the uploaded asset later
+  // (for example, when a campaign is deleted). Keep it alongside its URL
+  // instead of letting Zod strip it from the saved design settings.
+  publicId: z.string().optional(),
   name: z.string(),
   width: z.number().optional(),
   height: z.number().optional(),
@@ -39,6 +43,9 @@ export const FormatAdjustmentSchema = z.object({
 
 export const CampaignAssetsSchema = z.object({
   logoUrl: z.string().optional(),
+  logoPublicId: z.string().optional(),
+  logoWidth: z.number().optional(),
+  logoHeight: z.number().optional(),
   logoAspectRatio: z.number().optional(),
   backgroundImages: z.array(AssetRecordSchema).default([]),
   selectedBackgroundId: z.string().optional(),
@@ -56,3 +63,22 @@ export const CreateProjectSchema = z.object({
 });
 
 export const UpdateProjectSchema = CreateProjectSchema.partial();
+
+export const SavePreviewSchema = z.object({
+  dataUrl: z.string().max(21_000_000),
+  filename: z.string().min(1).max(160).optional(),
+});
+
+export const AspectRatioUploadItemSchema = z.object({
+  formatId: z.string().min(1, 'Format ID is required'),
+  aspectRatio: z.string().min(1, 'Aspect ratio is required'),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  dataUrl: z.string().min(1, 'Image data URL is required'),
+  filename: z.string().optional(),
+});
+
+export const BatchUploadImagesSchema = z.object({
+  images: z.array(AspectRatioUploadItemSchema).min(1, 'At least one image must be provided'),
+});
+

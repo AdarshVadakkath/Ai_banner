@@ -40,6 +40,9 @@ export const BrandAssetsSection: React.FC<BrandAssetsSectionProps> = ({
       const asset = await ApiService.uploadAsset(file);
       onChange({
         logoUrl: asset.url,
+        logoPublicId: asset.publicId,
+        logoWidth: asset.width,
+        logoHeight: asset.height,
         logoAspectRatio: asset.aspectRatio || 3.0,
       });
     } catch (err: any) {
@@ -54,6 +57,9 @@ export const BrandAssetsSection: React.FC<BrandAssetsSectionProps> = ({
   const handleRemoveLogo = () => {
     onChange({
       logoUrl: undefined,
+      logoPublicId: undefined,
+      logoWidth: undefined,
+      logoHeight: undefined,
       logoAspectRatio: undefined,
     });
   };

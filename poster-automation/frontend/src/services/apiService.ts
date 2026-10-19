@@ -244,4 +244,32 @@ export class ApiService {
     const data = await res.json();
     return data.asset;
   }
+
+  public static async uploadProjectImages(
+    projectId: string,
+    images: Array<{ formatId: string; aspectRatio: string; width: number; height: number; dataUrl: string }>
+  ): Promise<CampaignProject | null> {
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectId}/images`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.project) {
+          const current = this.getLocalProjects();
+          const existingIndex = current.findIndex((p) => p.id === projectId);
+          if (existingIndex >= 0) {
+            current[existingIndex] = data.project;
+            this.setLocalProjects([...current]);
+          }
+          return data.project;
+        }
+      }
+    } catch (e) {
+      console.warn(`Backend uploadProjectImages(${projectId}) failed:`, e);
+    }
+    return null;
+  }
 }

@@ -6,6 +6,8 @@ import {
   updateProject,
   deleteProject,
   duplicateProject,
+  uploadProjectImages,
+  getProjectImages,
 } from '../controllers/projectsController';
 
 export const projectsRouter = Router();
@@ -16,3 +18,5 @@ projectsRouter.post('/', createProject);
 projectsRouter.put('/:projectId', updateProject);
 projectsRouter.delete('/:projectId', deleteProject);
 projectsRouter.post('/:projectId/duplicate', duplicateProject);
+projectsRouter.post('/:projectId/images', uploadProjectImages);
+projectsRouter.get('/:projectId/images', getProjectImages);

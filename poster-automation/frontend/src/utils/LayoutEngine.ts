@@ -191,15 +191,16 @@ export function calculateCtaDimensions(
   options: { fontFamily?: string; fontWeight?: string; compact?: boolean } = {}
 ): { width: number; height: number; fontSize: number } {
   const compact = options.compact ?? false;
-  const fontSize = compact ? 11 : Math.max(11, Math.min(20, Math.round(canvasMinDimension * 0.022)));
-  const paddingX = compact ? 18 : variant === 'tertiary' ? Math.round(fontSize * 1.1) : Math.round(fontSize * 1.65);
-  const paddingY = compact ? 8 : variant === 'tertiary' ? Math.round(fontSize * 0.35) : Math.round(fontSize * 0.7);
+  const fontSize = compact ? 10 : Math.max(11, Math.min(20, Math.round(canvasMinDimension * 0.022)));
+  const paddingX = compact ? 12 : variant === 'tertiary' ? Math.round(fontSize * 1.1) : Math.round(fontSize * 1.65);
+  const paddingY = compact ? 5 : variant === 'tertiary' ? Math.round(fontSize * 0.35) : Math.round(fontSize * 0.7);
   const labelWidth = measureTextBlock(text, fontSize, Math.max(1, availableWidth), { fontFamily: options.fontFamily, fontWeight: options.fontWeight }).width;
-  const minWidth = compact ? 84 : variant === 'tertiary' ? 72 : 96;
-  const maxWidth = Math.max(minWidth, Math.floor(availableWidth * (compact ? 0.34 : 0.72)));
+  const minWidth = compact ? 70 : variant === 'tertiary' ? 72 : 96;
+  const neededWidth = Math.round(labelWidth + paddingX * 2);
+  const maxWidth = Math.max(neededWidth, Math.floor(availableWidth * 0.85));
   return {
-    width: Math.round(Math.min(maxWidth, Math.max(minWidth, labelWidth + paddingX * 2))),
-    height: compact ? 32 : Math.max(variant === 'tertiary' ? 30 : 36, Math.round(fontSize + paddingY * 2)),
+    width: Math.round(Math.min(availableWidth, Math.max(minWidth, Math.min(maxWidth, neededWidth)))),
+    height: compact ? 24 : Math.max(variant === 'tertiary' ? 30 : 36, Math.round(fontSize + paddingY * 2)),
     fontSize,
   };
 }
@@ -497,41 +498,41 @@ export class LayoutEngine {
     const textSecondaryColor = template.colorScheme.textSecondary;
     const accentColor = template.colorScheme.accent;
 
-    // Carousel cards are consumed as a 1080 × 1080 social placement, often
-    // alongside an image subject on the right.  Do not let them inherit the
-    // generic square flow: it estimates wrapped lines before Fabric applies
-    // the selected font, which could let a headline paint over the paragraph.
-    // This composition reserves independent lanes for copy, CTA and metadata.
-    const isCarouselCard = format.id === 'carousel-card' && width === 1080 && height === 1080;
-    if (isCarouselCard) {
-      const carouselWidth = Math.min(contentWidth, Math.round(width * 0.62));
-      const carouselGap = Math.max(22, Math.round(height * 0.024));
-      const footerFontSize = Math.max(18, Math.round(height * 0.022));
+    // Square formats (1:1 aspect ratio, e.g. 1080x1080 Square / Carousel card and 1200x1200 Square)
+    // require balanced text column geometry with dedicated independent lanes for intro,
+    // heading, paragraph, CTA button and footer metadata so text never overlaps or collides with artwork.
+    const isSquareRatio = width === height || format.aspectRatioLabel === '1:1' || (layoutFamily === 'square' && Math.abs(width - height) <= 2);
+    if (isSquareRatio) {
+      const squareWidth = Math.min(contentWidth, Math.round(width * 0.60));
+      const squareGap = Math.max(20, Math.round(height * 0.024));
+      const footerFontSize = Math.max(16, Math.round(height * 0.021));
       const footerText = [content.dateText, content.locationText]
         .filter((value) => Boolean(value && value.trim().length > 0))
         .join('  •  ');
-      const footerMeasure = measureTextBlock(footerText, footerFontSize, carouselWidth, {
-        fontFamily: template.typography.bodyFontFamily,
-        fontWeight: '600',
-        lineHeight: 1.3,
-      });
+      const footerMeasure = footerText
+        ? measureTextBlock(footerText, footerFontSize, squareWidth, {
+            fontFamily: template.typography.bodyFontFamily,
+            fontWeight: '600',
+            lineHeight: 1.3,
+          })
+        : { width: 0, height: 0, lines: [], lineCount: 0 };
       const footerH = footerText ? Math.ceil(footerMeasure.height) : 0;
       const footerY = footerText ? height - padBottom - footerH : height - padBottom;
 
       const ctaText = content.ctaText?.trim() || '';
       const ctaDimensions = ctaText
-        ? calculateCtaDimensions(ctaText, carouselWidth, minDimension, 'primary', {
+        ? calculateCtaDimensions(ctaText, squareWidth, minDimension, 'primary', {
             fontFamily: template.typography.bodyFontFamily,
             fontWeight: '700',
           })
         : null;
       const ctaY = ctaDimensions
-        ? footerY - carouselGap * 1.6 - ctaDimensions.height
+        ? footerY - squareGap * 1.5 - ctaDimensions.height
         : footerY;
 
-      const introFontSize = Math.max(18, Math.round(minDimension * tc.introFontSizeRatio));
+      const introFontSize = Math.max(16, Math.round(minDimension * tc.introFontSizeRatio));
       const introMeasure = content.introText?.trim()
-        ? measureTextBlock(content.introText, introFontSize, carouselWidth, {
+        ? measureTextBlock(content.introText, introFontSize, squareWidth, {
             fontFamily: template.typography.bodyFontFamily,
             fontWeight: '700',
             lineHeight: 1.2,
@@ -539,29 +540,29 @@ export class LayoutEngine {
         : null;
 
       let headingFontSize = Math.min(tc.maxHeadingFontSize, Math.round(minDimension * tc.headingFontSizeRatio));
-      let headingMeasure = measureTextBlock(content.mainHeading || '', headingFontSize, carouselWidth, {
+      let headingMeasure = measureTextBlock(content.mainHeading || '', headingFontSize, squareWidth, {
         fontFamily: template.typography.headingFontFamily,
         fontWeight: template.typography.headingWeight,
         lineHeight: 1.15,
       });
       while (headingMeasure.lineCount > tc.maxHeadingLines && headingFontSize > tc.minHeadingFontSize) {
         headingFontSize = Math.max(tc.minHeadingFontSize, headingFontSize - 2);
-        headingMeasure = measureTextBlock(content.mainHeading || '', headingFontSize, carouselWidth, {
+        headingMeasure = measureTextBlock(content.mainHeading || '', headingFontSize, squareWidth, {
           fontFamily: template.typography.headingFontFamily,
           fontWeight: template.typography.headingWeight,
           lineHeight: 1.15,
         });
       }
 
-      let paragraphFontSize = Math.max(18, Math.round(minDimension * tc.paragraphFontSizeRatio));
-      let paragraphMeasure = measureTextBlock(content.supportingParagraph || '', paragraphFontSize, carouselWidth, {
+      let paragraphFontSize = Math.max(16, Math.round(minDimension * tc.paragraphFontSizeRatio));
+      let paragraphMeasure = measureTextBlock(content.supportingParagraph || '', paragraphFontSize, squareWidth, {
         fontFamily: template.typography.bodyFontFamily,
         fontWeight: template.typography.bodyWeight,
         lineHeight: 1.35,
       });
-      while (paragraphMeasure.lineCount > tc.maxParagraphLines && paragraphFontSize > 18) {
+      while (paragraphMeasure.lineCount > tc.maxParagraphLines && paragraphFontSize > 16) {
         paragraphFontSize -= 2;
-        paragraphMeasure = measureTextBlock(content.supportingParagraph || '', paragraphFontSize, carouselWidth, {
+        paragraphMeasure = measureTextBlock(content.supportingParagraph || '', paragraphFontSize, squareWidth, {
           fontFamily: template.typography.bodyFontFamily,
           fontWeight: template.typography.bodyWeight,
           lineHeight: 1.35,
@@ -569,36 +570,38 @@ export class LayoutEngine {
       }
 
       const copyHeight =
-        (introMeasure ? introMeasure.height + Math.round(carouselGap * 0.75) : 0) +
-        (headingMeasure.height ? headingMeasure.height + carouselGap : 0) +
+        (introMeasure ? introMeasure.height + Math.round(squareGap * 0.75) : 0) +
+        (headingMeasure.height ? headingMeasure.height + squareGap : 0) +
         paragraphMeasure.height;
       const copyTop = Math.max(
-        logoBottomY + Math.round(height * 0.16),
+        logoBottomY + Math.round(height * 0.08),
         Math.round((logoBottomY + ctaY - copyHeight) / 2)
       );
-      let copyY = Math.min(copyTop, ctaY - carouselGap - copyHeight);
+      let copyY = Math.min(copyTop, ctaY - squareGap - copyHeight);
+
+      const colX = textAlign === 'center' ? Math.round(padLeft + (contentWidth - squareWidth) / 2) : padLeft;
 
       if (introMeasure) {
         elements.push({
-          id: 'element-intro', type: 'intro', x: padLeft, y: Math.round(copyY), width: carouselWidth,
+          id: 'element-intro', type: 'intro', x: colX, y: Math.round(copyY), width: squareWidth,
           height: introMeasure.height, text: content.introText, fontSize: introFontSize,
           fontFamily: template.typography.bodyFontFamily, fontWeight: '700', lineHeight: 1.2,
           color: template.colorScheme.introText ?? accentColor, textAlign, isDraggable: true,
         });
-        copyY += introMeasure.height + Math.round(carouselGap * 0.75);
+        copyY += introMeasure.height + Math.round(squareGap * 0.75);
       }
       if (headingMeasure.height) {
         elements.push({
-          id: 'element-heading', type: 'heading', x: padLeft, y: Math.round(copyY), width: carouselWidth,
+          id: 'element-heading', type: 'heading', x: colX, y: Math.round(copyY), width: squareWidth,
           height: headingMeasure.height, text: content.mainHeading, fontSize: headingFontSize,
           fontFamily: template.typography.headingFontFamily, fontWeight: template.typography.headingWeight,
           lineHeight: 1.15, color: textPrimaryColor, textAlign, isDraggable: true,
         });
-        copyY += headingMeasure.height + carouselGap;
+        copyY += headingMeasure.height + squareGap;
       }
       if (paragraphMeasure.height) {
         elements.push({
-          id: 'element-paragraph', type: 'paragraph', x: padLeft, y: Math.round(copyY), width: carouselWidth,
+          id: 'element-paragraph', type: 'paragraph', x: colX, y: Math.round(copyY), width: squareWidth,
           height: paragraphMeasure.height, text: content.supportingParagraph, fontSize: paragraphFontSize,
           fontFamily: template.typography.bodyFontFamily, fontWeight: template.typography.bodyWeight,
           lineHeight: 1.35, color: textSecondaryColor, textAlign, isDraggable: true,
@@ -606,7 +609,7 @@ export class LayoutEngine {
       }
       if (ctaDimensions) {
         elements.push({
-          id: 'element-cta', type: 'cta-button', x: textAlign === 'center' ? padLeft + (carouselWidth - ctaDimensions.width) / 2 : padLeft,
+          id: 'element-cta', type: 'cta-button', x: textAlign === 'center' ? colX + (squareWidth - ctaDimensions.width) / 2 : colX,
           y: Math.round(ctaY), width: ctaDimensions.width, height: ctaDimensions.height, text: ctaText,
           fontSize: ctaDimensions.fontSize, fontFamily: template.typography.bodyFontFamily, fontWeight: '700',
           lineHeight: 1.0, color: template.colorScheme.ctaText || '#FFFFFF',
@@ -616,7 +619,7 @@ export class LayoutEngine {
       }
       if (footerText) {
         elements.push({
-          id: 'element-footer', type: 'footer', x: padLeft, y: Math.round(footerY), width: carouselWidth,
+          id: 'element-footer', type: 'footer', x: colX, y: Math.round(footerY), width: squareWidth,
           height: footerH, text: footerText, fontSize: footerFontSize, fontFamily: template.typography.bodyFontFamily,
           fontWeight: '600', lineHeight: 1.3, color: template.colorScheme.footerText ?? (accentColor || textSecondaryColor),
           textAlign, isDraggable: true,
@@ -638,53 +641,493 @@ export class LayoutEngine {
         }
       }
 
-      const carouselLayout = { format, canvasWidth: width, canvasHeight: height, layoutFamily, elements, warnings, templateId, validationAttempts: 1, isValid: true };
-      const validation = validateResolvedLayout(carouselLayout, Math.min(padLeft, padRight, padTop, padBottom) * 0.35);
-      carouselLayout.warnings.push(...validation);
-      carouselLayout.isValid = !carouselLayout.warnings.some((warning) => warning.severity === 'error');
-      return carouselLayout;
+      const squareLayout = { format, canvasWidth: width, canvasHeight: height, layoutFamily, elements, warnings, templateId, validationAttempts: 1, isValid: true };
+      const validation = validateResolvedLayout(squareLayout, Math.min(padLeft, padRight, padTop, padBottom) * 0.35);
+      squareLayout.warnings.push(...validation);
+      squareLayout.isValid = !squareLayout.warnings.some((warning) => warning.severity === 'error');
+      return squareLayout;
     }
 
-    // The 300 × 250 medium rectangle is a compact display unit, not a
-    // reduced social post. Reserve a narrow, non-overlapping copy column and
-    // keep the CTA / footer in fixed bottom lanes.
+    // The 300 × 250 medium rectangle is a compact 6:5 display unit.
+    // Reserve dedicated, non-overlapping lanes: scaled logo at top, vertically-balanced copy
+    // in a constrained column, properly sized single-line CTA button, and footer at bottom.
     const isMediumRectangle = format.id === 'medium-rectangle' && width === 300 && height === 250;
     if (isMediumRectangle) {
-      const columnWidth = Math.min(contentWidth, 210);
-      const gap = 6;
+      const padL = 16;
+      const padB = 10;
+      const columnWidth = 195;
+
+      // Ensure logo is compactly sized for 300x250
+      const logoEl = elements.find((el) => el.type === 'logo');
+      let effectiveLogoBottomY = 12;
+      if (logoEl) {
+        logoEl.x = padL;
+        logoEl.y = 12;
+        logoEl.height = 22;
+        const logoAspect = assets.logoAspectRatio || 2.5;
+        logoEl.width = Math.min(100, Math.round(logoEl.height * logoAspect));
+        effectiveLogoBottomY = 12 + logoEl.height;
+      }
+
+      // Footer at bottom
       const footerText = [content.dateText, content.locationText].filter(Boolean).join('  •  ');
-      const footerSize = 11;
-      const footerMeasure = measureTextBlock(footerText, footerSize, columnWidth, { fontFamily: template.typography.bodyFontFamily, fontWeight: '600', lineHeight: 1.25 });
-      const footerY = height - padBottom - footerMeasure.height;
+      const footerSize = 8.5;
+      const footerMeasure = footerText
+        ? measureTextBlock(footerText, footerSize, columnWidth, {
+            fontFamily: template.typography.bodyFontFamily,
+            fontWeight: '600',
+            lineHeight: 1.2,
+          })
+        : { width: 0, height: 0, lines: [], lineCount: 0 };
+      const footerH = footerText ? Math.ceil(footerMeasure.height) : 0;
+      const footerY = footerText ? height - padB - footerH : height - padB;
+
+      // CTA button above footer
       const ctaText = content.ctaText?.trim() || '';
-      const cta = ctaText ? calculateCtaDimensions(ctaText, columnWidth, minDimension, 'primary', { fontFamily: template.typography.bodyFontFamily, fontWeight: '700', compact: true }) : null;
-      const ctaY = cta ? footerY - gap * 2 - cta.height : footerY;
-      const introSize = 10;
-      const introMeasure = content.introText?.trim() ? measureTextBlock(content.introText, introSize, columnWidth, { fontFamily: template.typography.bodyFontFamily, fontWeight: '700', lineHeight: 1.2 }) : null;
-      let headingSize = 17;
-      let headingMeasure = measureTextBlock(content.mainHeading || '', headingSize, columnWidth, { fontFamily: template.typography.headingFontFamily, fontWeight: template.typography.headingWeight, lineHeight: 1.1 });
-      while (headingMeasure.lineCount > 2 && headingSize > 13) {
-        headingSize -= 1;
-        headingMeasure = measureTextBlock(content.mainHeading || '', headingSize, columnWidth, { fontFamily: template.typography.headingFontFamily, fontWeight: template.typography.headingWeight, lineHeight: 1.1 });
+      const ctaDimensions = ctaText
+        ? calculateCtaDimensions(ctaText, columnWidth, minDimension, 'primary', {
+            fontFamily: template.typography.bodyFontFamily,
+            fontWeight: '700',
+            compact: true,
+          })
+        : null;
+      const ctaH = ctaDimensions ? ctaDimensions.height : 0;
+      const ctaY = ctaDimensions ? footerY - 6 - ctaH : footerY;
+
+      // Copy column between logo and CTA
+      const introText = content.introText?.trim() || '';
+      const introSize = 8.5;
+      const introMeasure = introText
+        ? measureTextBlock(introText, introSize, columnWidth, {
+            fontFamily: template.typography.bodyFontFamily,
+            fontWeight: '700',
+            lineHeight: 1.15,
+          })
+        : null;
+
+      let headingSize = 13.5;
+      let headingMeasure = measureTextBlock(content.mainHeading || '', headingSize, columnWidth, {
+        fontFamily: template.typography.headingFontFamily,
+        fontWeight: template.typography.headingWeight,
+        lineHeight: 1.15,
+      });
+      while (headingMeasure.lineCount > 2 && headingSize > 11) {
+        headingSize -= 0.5;
+        headingMeasure = measureTextBlock(content.mainHeading || '', headingSize, columnWidth, {
+          fontFamily: template.typography.headingFontFamily,
+          fontWeight: template.typography.headingWeight,
+          lineHeight: 1.15,
+        });
       }
-      let paragraphSize = 12;
-      let paragraphMeasure = measureTextBlock(content.supportingParagraph || '', paragraphSize, columnWidth, { fontFamily: template.typography.bodyFontFamily, fontWeight: template.typography.bodyWeight, lineHeight: 1.25 });
-      while (paragraphMeasure.lineCount > 3 && paragraphSize > 10) {
-        paragraphSize -= 1;
-        paragraphMeasure = measureTextBlock(content.supportingParagraph || '', paragraphSize, columnWidth, { fontFamily: template.typography.bodyFontFamily, fontWeight: template.typography.bodyWeight, lineHeight: 1.25 });
+
+      let paragraphSize = 9.5;
+      let paragraphMeasure = measureTextBlock(content.supportingParagraph || '', paragraphSize, columnWidth, {
+        fontFamily: template.typography.bodyFontFamily,
+        fontWeight: template.typography.bodyWeight,
+        lineHeight: 1.22,
+      });
+      while (paragraphMeasure.lineCount > 2 && paragraphSize > 8) {
+        paragraphSize -= 0.5;
+        paragraphMeasure = measureTextBlock(content.supportingParagraph || '', paragraphSize, columnWidth, {
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: template.typography.bodyWeight,
+          lineHeight: 1.22,
+        });
       }
-      const copyHeight = (introMeasure ? introMeasure.height + gap : 0) + (headingMeasure.height ? headingMeasure.height + gap : 0) + paragraphMeasure.height;
-      let y = Math.max(logoBottomY + 16, Math.min(74, ctaY - gap - copyHeight));
-      if (introMeasure) { elements.push({ id: 'element-intro', type: 'intro', x: padLeft, y, width: columnWidth, height: introMeasure.height, text: content.introText, fontSize: introSize, fontFamily: template.typography.bodyFontFamily, fontWeight: '700', lineHeight: 1.2, color: template.colorScheme.introText ?? accentColor, textAlign, isDraggable: true }); y += introMeasure.height + gap; }
-      if (headingMeasure.height) { elements.push({ id: 'element-heading', type: 'heading', x: padLeft, y, width: columnWidth, height: headingMeasure.height, text: content.mainHeading, fontSize: headingSize, fontFamily: template.typography.headingFontFamily, fontWeight: template.typography.headingWeight, lineHeight: 1.1, color: textPrimaryColor, textAlign, isDraggable: true }); y += headingMeasure.height + gap; }
-      if (paragraphMeasure.height) elements.push({ id: 'element-paragraph', type: 'paragraph', x: padLeft, y, width: columnWidth, height: paragraphMeasure.height, text: content.supportingParagraph, fontSize: paragraphSize, fontFamily: template.typography.bodyFontFamily, fontWeight: template.typography.bodyWeight, lineHeight: 1.25, color: textSecondaryColor, textAlign, isDraggable: true });
-      if (cta) elements.push({ id: 'element-cta', type: 'cta-button', x: padLeft, y: ctaY, width: cta.width, height: cta.height, text: ctaText, fontSize: cta.fontSize, fontFamily: template.typography.bodyFontFamily, fontWeight: '700', lineHeight: 1, color: template.colorScheme.ctaText || '#FFFFFF', fill: template.colorScheme.ctaBackground || template.colorScheme.secondary || '#E5173F', ctaType: 'primary', textAlign: 'center', isDraggable: true });
-      if (footerText) elements.push({ id: 'element-footer', type: 'footer', x: padLeft, y: footerY, width: columnWidth, height: footerMeasure.height, text: footerText, fontSize: footerSize, fontFamily: template.typography.bodyFontFamily, fontWeight: '600', lineHeight: 1.25, color: template.colorScheme.footerText ?? (accentColor || textSecondaryColor), textAlign, isDraggable: true });
+
+      const gap = 4;
+      const introH = introMeasure ? introMeasure.height + gap : 0;
+      const headingH = headingMeasure.height ? headingMeasure.height + gap : 0;
+      const paragraphH = paragraphMeasure.height;
+      const copyHeight = introH + headingH + paragraphH;
+
+      const availableTop = effectiveLogoBottomY + 6;
+      const availableBottom = ctaY - 6;
+      const availableHeight = Math.max(copyHeight, availableBottom - availableTop);
+      let copyY = Math.round(availableTop + (availableHeight - copyHeight) / 2);
+      if (copyY + copyHeight > availableBottom) {
+        copyY = Math.max(availableTop, availableBottom - copyHeight);
+      }
+
+      if (introMeasure) {
+        elements.push({
+          id: 'element-intro',
+          type: 'intro',
+          x: padL,
+          y: Math.round(copyY),
+          width: columnWidth,
+          height: introMeasure.height,
+          text: introText,
+          fontSize: introSize,
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: '700',
+          lineHeight: 1.15,
+          color: template.colorScheme.introText ?? accentColor,
+          textAlign,
+          isDraggable: true,
+        });
+        copyY += introMeasure.height + gap;
+      }
+
+      if (headingMeasure.height) {
+        elements.push({
+          id: 'element-heading',
+          type: 'heading',
+          x: padL,
+          y: Math.round(copyY),
+          width: columnWidth,
+          height: headingMeasure.height,
+          text: content.mainHeading,
+          fontSize: headingSize,
+          fontFamily: template.typography.headingFontFamily,
+          fontWeight: template.typography.headingWeight,
+          lineHeight: 1.15,
+          color: textPrimaryColor,
+          textAlign,
+          isDraggable: true,
+        });
+        copyY += headingMeasure.height + gap;
+      }
+
+      if (paragraphMeasure.height) {
+        elements.push({
+          id: 'element-paragraph',
+          type: 'paragraph',
+          x: padL,
+          y: Math.round(copyY),
+          width: columnWidth,
+          height: paragraphMeasure.height,
+          text: content.supportingParagraph,
+          fontSize: paragraphSize,
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: template.typography.bodyWeight,
+          lineHeight: 1.22,
+          color: textSecondaryColor,
+          textAlign,
+          isDraggable: true,
+        });
+      }
+
+      if (ctaDimensions) {
+        elements.push({
+          id: 'element-cta',
+          type: 'cta-button',
+          x: padL,
+          y: Math.round(ctaY),
+          width: ctaDimensions.width,
+          height: ctaDimensions.height,
+          text: ctaText,
+          fontSize: ctaDimensions.fontSize,
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: '700',
+          lineHeight: 1.0,
+          color: template.colorScheme.ctaText || '#FFFFFF',
+          fill: template.colorScheme.ctaBackground || template.colorScheme.secondary || '#E5173F',
+          ctaType: 'primary',
+          textAlign: 'center',
+          isDraggable: true,
+        });
+      }
+
+      if (footerText) {
+        elements.push({
+          id: 'element-footer',
+          type: 'footer',
+          x: padL,
+          y: Math.round(footerY),
+          width: columnWidth,
+          height: footerH,
+          text: footerText,
+          fontSize: footerSize,
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: '600',
+          lineHeight: 1.2,
+          color: template.colorScheme.footerText ?? (accentColor || textSecondaryColor),
+          textAlign,
+          isDraggable: true,
+        });
+      }
+
+      if (adjustment?.elementOverrides) {
+        for (const el of elements) {
+          const override = adjustment.elementOverrides[el.id];
+          if (!override) continue;
+          if (override.x !== undefined) el.x = override.x;
+          if (override.y !== undefined) el.y = override.y;
+          if (override.scale !== undefined) { el.width *= override.scale; el.height *= override.scale; }
+          if (override.fontFamily !== undefined) el.fontFamily = override.fontFamily;
+          if (override.fontWeight !== undefined) el.fontWeight = override.fontWeight;
+          if (override.fontSize !== undefined) el.fontSize = override.fontSize;
+          if (override.color !== undefined) el.color = override.color;
+          if (override.textAlign !== undefined) el.textAlign = override.textAlign;
+        }
+      }
+
       const mediumLayout = { format, canvasWidth: width, canvasHeight: height, layoutFamily, elements, warnings, templateId, validationAttempts: 1, isValid: true };
       const validation = validateResolvedLayout(mediumLayout, 2);
       mediumLayout.warnings.push(...validation);
       mediumLayout.isValid = !mediumLayout.warnings.some(warning => warning.severity === 'error');
       return mediumLayout;
+    }
+
+    // Specialized layout for Skyscraper and tall vertical display banners (e.g. 160x600 Skyscraper, 300x600 Half Page).
+    // Provides centered optical alignment, tuned typography hierarchy for narrow viewports,
+    // and balanced vertical distribution (centered logo, centered hero message block, centered CTA button, and centered footer metadata).
+    if (layoutFamily === 'skyscraper') {
+      const isNarrow = width <= 220; // 160x600 Skyscraper
+      const padX = isNarrow ? 14 : 24;
+      const colWidth = width - padX * 2;
+      const colX = padX;
+
+      // Ensure logo is centered and proportioned
+      const logoEl = elements.find((el) => el.type === 'logo');
+      let effectiveLogoBottomY = isNarrow ? 24 : 32;
+      if (logoEl) {
+        const logoAspect = assets.logoAspectRatio || (assets.logoWidth && assets.logoHeight ? assets.logoWidth / assets.logoHeight : 2.0);
+        const maxLogoH = isNarrow ? 40 : 50;
+        const maxLogoW = Math.min(colWidth * 0.85, isNarrow ? 120 : 200);
+        let logoH = maxLogoH;
+        let logoW = Math.round(logoH * logoAspect);
+        if (logoW > maxLogoW) {
+          logoW = Math.round(maxLogoW);
+          logoH = Math.round(logoW / logoAspect);
+        }
+        logoEl.x = Math.round((width - logoW) / 2);
+        logoEl.y = isNarrow ? 24 : 30;
+        logoEl.width = logoW;
+        logoEl.height = logoH;
+        effectiveLogoBottomY = logoEl.y + logoH;
+      }
+
+      // Footer (Date & Location) anchored near bottom
+      const footerLines = [content.dateText, content.locationText]
+        .map((t) => t?.trim())
+        .filter((t): t is string => Boolean(t && t.length > 0));
+      const footerText = footerLines.join(isNarrow ? '\n' : '  •  ');
+      const footerFontSize = isNarrow ? 9 : 12;
+      const footerMeasure = footerText
+        ? measureTextBlock(footerText, footerFontSize, colWidth, {
+            fontFamily: template.typography.bodyFontFamily,
+            fontWeight: '600',
+            lineHeight: 1.3,
+          })
+        : { width: 0, height: 0, lines: [], lineCount: 0 };
+      const footerH = footerText ? Math.ceil(footerMeasure.height) : 0;
+      const padBottom = isNarrow ? 16 : 24;
+      const footerY = footerText ? height - padBottom - footerH : height - padBottom;
+
+      // CTA button above footer
+      const ctaText = content.ctaText?.trim() || '';
+      const ctaFontSize = isNarrow ? 11 : 14;
+      const ctaH = isNarrow ? 32 : 40;
+      let ctaW = 0;
+      let ctaY = footerY;
+      if (ctaText) {
+        const labelW = measureTextBlock(ctaText, ctaFontSize, colWidth, {
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: '700',
+        }).width;
+        ctaW = Math.round(Math.min(colWidth, Math.max(isNarrow ? 116 : 160, labelW + (isNarrow ? 26 : 36))));
+        const ctaGapBelow = footerText ? (isNarrow ? 12 : 16) : 0;
+        ctaY = footerY - ctaGapBelow - ctaH;
+      }
+      const ctaX = Math.round((width - ctaW) / 2);
+
+      // Value proposition copy block (Intro + Heading + Paragraph)
+      const introText = content.introText?.trim() || '';
+      const introFontSize = isNarrow ? 9.5 : 13;
+      const introMeasure = introText
+        ? measureTextBlock(introText, introFontSize, colWidth, {
+            fontFamily: template.typography.bodyFontFamily,
+            fontWeight: '700',
+            lineHeight: 1.2,
+          })
+        : null;
+
+      const headingText = content.mainHeading?.trim() || '';
+      let headingFontSize = isNarrow ? 16 : 24;
+      let headingMeasure = measureTextBlock(headingText, headingFontSize, colWidth, {
+        fontFamily: template.typography.headingFontFamily,
+        fontWeight: template.typography.headingWeight || '800',
+        lineHeight: 1.15,
+      });
+      const maxHeadingLines = 3;
+      const minHeadingSize = isNarrow ? 13 : 18;
+      while (headingMeasure.lineCount > maxHeadingLines && headingFontSize > minHeadingSize) {
+        headingFontSize -= 0.5;
+        headingMeasure = measureTextBlock(headingText, headingFontSize, colWidth, {
+          fontFamily: template.typography.headingFontFamily,
+          fontWeight: template.typography.headingWeight || '800',
+          lineHeight: 1.15,
+        });
+      }
+
+      const paragraphText = content.supportingParagraph?.trim() || '';
+      let paragraphFontSize = isNarrow ? 10 : 13.5;
+      let paragraphMeasure = measureTextBlock(paragraphText, paragraphFontSize, colWidth, {
+        fontFamily: template.typography.bodyFontFamily,
+        fontWeight: template.typography.bodyWeight || '500',
+        lineHeight: 1.35,
+      });
+      const maxParagraphLines = 4;
+      const minParagraphSize = isNarrow ? 8.5 : 11;
+      while (paragraphMeasure.lineCount > maxParagraphLines && paragraphFontSize > minParagraphSize) {
+        paragraphFontSize -= 0.5;
+        paragraphMeasure = measureTextBlock(paragraphText, paragraphFontSize, colWidth, {
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: template.typography.bodyWeight || '500',
+          lineHeight: 1.35,
+        });
+      }
+
+      const gapIntroHeading = introMeasure && headingMeasure.height ? (isNarrow ? 8 : 12) : 0;
+      const gapHeadingParagraph = headingMeasure.height && paragraphMeasure.height ? (isNarrow ? 12 : 16) : 0;
+      const introH = introMeasure ? introMeasure.height : 0;
+      const headingH = headingMeasure.height ? headingMeasure.height : 0;
+      const paragraphH = paragraphMeasure.height ? paragraphMeasure.height : 0;
+      const copyHeight = introH + gapIntroHeading + headingH + gapHeadingParagraph + paragraphH;
+
+      // Vertical placement of the copy block:
+      // Balanced placement in the available zone between logo bottom and CTA top
+      const availTop = effectiveLogoBottomY + (isNarrow ? 18 : 24);
+      const availBottom = (ctaText ? ctaY : footerY) - (isNarrow ? 18 : 24);
+      const availHeight = Math.max(copyHeight, availBottom - availTop);
+      const slack = availHeight - copyHeight;
+      let copyY = Math.round(availTop + slack * 0.40);
+      if (copyY + copyHeight > availBottom) {
+        copyY = Math.max(availTop, availBottom - copyHeight);
+      }
+
+      if (introMeasure) {
+        elements.push({
+          id: 'element-intro',
+          type: 'intro',
+          x: colX,
+          y: Math.round(copyY),
+          width: colWidth,
+          height: introMeasure.height,
+          text: introText,
+          fontSize: introFontSize,
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: '700',
+          lineHeight: 1.2,
+          color: template.colorScheme.introText ?? accentColor,
+          textAlign: 'center',
+          isDraggable: true,
+        });
+        copyY += introMeasure.height + gapIntroHeading;
+      }
+
+      if (headingMeasure.height) {
+        elements.push({
+          id: 'element-heading',
+          type: 'heading',
+          x: colX,
+          y: Math.round(copyY),
+          width: colWidth,
+          height: headingMeasure.height,
+          text: headingText,
+          fontSize: headingFontSize,
+          fontFamily: template.typography.headingFontFamily,
+          fontWeight: template.typography.headingWeight || '800',
+          lineHeight: 1.15,
+          color: textPrimaryColor,
+          textAlign: 'center',
+          isDraggable: true,
+        });
+        copyY += headingMeasure.height + gapHeadingParagraph;
+      }
+
+      if (paragraphMeasure.height) {
+        elements.push({
+          id: 'element-paragraph',
+          type: 'paragraph',
+          x: colX,
+          y: Math.round(copyY),
+          width: colWidth,
+          height: paragraphMeasure.height,
+          text: paragraphText,
+          fontSize: paragraphFontSize,
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: template.typography.bodyWeight || '500',
+          lineHeight: 1.35,
+          color: textSecondaryColor,
+          textAlign: 'center',
+          isDraggable: true,
+        });
+      }
+
+      if (ctaText) {
+        elements.push({
+          id: 'element-cta',
+          type: 'cta-button',
+          x: ctaX,
+          y: Math.round(ctaY),
+          width: ctaW,
+          height: ctaH,
+          text: ctaText,
+          fontSize: ctaFontSize,
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: '700',
+          lineHeight: 1.0,
+          color: template.colorScheme.ctaText || '#FFFFFF',
+          fill: template.colorScheme.ctaBackground || template.colorScheme.secondary || '#E5173F',
+          ctaType: 'primary',
+          textAlign: 'center',
+          isDraggable: true,
+        });
+      }
+
+      if (footerText) {
+        elements.push({
+          id: 'element-footer',
+          type: 'footer',
+          x: colX,
+          y: Math.round(footerY),
+          width: colWidth,
+          height: footerH,
+          text: footerText,
+          fontSize: footerFontSize,
+          fontFamily: template.typography.bodyFontFamily,
+          fontWeight: '600',
+          lineHeight: 1.3,
+          color: template.colorScheme.footerText ?? (accentColor || textSecondaryColor),
+          textAlign: 'center',
+          isDraggable: true,
+        });
+      }
+
+      // Support format-level manual user drag/style overrides if provided
+      if (adjustment?.elementOverrides) {
+        for (const el of elements) {
+          const override = adjustment.elementOverrides[el.id];
+          if (!override) continue;
+          if (override.x !== undefined) el.x = override.x;
+          if (override.y !== undefined) el.y = override.y;
+          if (override.scale !== undefined) { el.width *= override.scale; el.height *= override.scale; }
+          if (override.fontFamily !== undefined) el.fontFamily = override.fontFamily;
+          if (override.fontWeight !== undefined) el.fontWeight = override.fontWeight;
+          if (override.fontSize !== undefined) el.fontSize = override.fontSize;
+          if (override.color !== undefined) el.color = override.color;
+          if (override.textAlign !== undefined) el.textAlign = override.textAlign;
+        }
+      }
+
+      const skyscraperLayout = {
+        format,
+        canvasWidth: width,
+        canvasHeight: height,
+        layoutFamily,
+        elements,
+        warnings,
+        templateId,
+        validationAttempts: 1,
+        isValid: true,
+      };
+      const validation = validateResolvedLayout(skyscraperLayout, 2);
+      skyscraperLayout.warnings.push(...validation);
+      skyscraperLayout.isValid = !skyscraperLayout.warnings.some((warning) => warning.severity === 'error');
+      return skyscraperLayout;
     }
 
     // 4. Calculate Text Elements & Typography
